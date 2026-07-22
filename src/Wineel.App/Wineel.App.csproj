@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Wineel</AssemblyName>
+    <RootNamespace>Wineel</RootNamespace>
+    <ApplicationIcon>..\..\assets\Wineel.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <Version>0.0.1</Version>
+    <Company>Wineel</Company>
+    <Product>Wineel</Product>
+    <Description>Fast radial application switcher for Windows</Description>
+    <Copyright>Copyright © 2026 Wineel contributors</Copyright>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Wineel.Core\Wineel.Core.csproj" />
+    <ProjectReference Include="..\Wineel.Windows\Wineel.Windows.csproj" />
+    <Resource Include="..\..\assets\wineel-icon.png" Link="Assets\wineel-icon.png" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,45 @@
+bin/
+obj/
+.vs/
+.idea/
+.vscode/
+.agents/
+.codex/
+TestResults/
+artifacts/
+publish/
+*.user
+*.suo
+*.nupkg
+*.snupkg
+*.log
+*.tmp
+*.bak
+Thumbs.db
+.DS_Store
+
+# Local screenshots, recordings, and design-QA evidence never belong in the remote.
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.webp
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+design-qa.md
+
+# The final application artwork is a required build resource, not a screenshot.
+!assets/wineel-icon.png
+
+# Local credentials and signing material.
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
