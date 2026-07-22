@@ -89,23 +89,30 @@ public sealed class WheelRenderer : FrameworkElement
         var ringRadius = Math.Min(plateRadius - _settings.IconSize * 0.65, wheel * 0.405);
         var center = new Point(_center.X, _center.Y);
         var highContrast = SystemParameters.HighContrast;
+        var darkTheme = highContrast
+            ? WpfSystemColors.WindowColor.R + WpfSystemColors.WindowColor.G + WpfSystemColors.WindowColor.B < 384
+            : ThemeService.IsDark(_settings.ThemeMode);
+        var foreground = highContrast ? WpfSystemColors.WindowTextColor : darkTheme ? Color.FromRgb(242, 242, 244) : Color.FromRgb(30, 30, 32);
         var openScale = 0.94 + 0.06 * EaseOut(_openProgress);
         drawing.PushOpacity(Math.Clamp(_openProgress, 0.01, 1));
         drawing.PushTransform(new ScaleTransform(openScale, openScale, center.X, center.Y));
 
-        var slots = RadialLayout.Calculate(_items.Count, _selectedIndex, _settings.MaximumVisibleIcons, _center, ringRadius);
+        var visibleCapacity = WheelCapacity.Calculate(wheel, _settings.IconSize, _settings.MaximumVisibleIcons);
+        var slots = RadialLayout.Calculate(_items.Count, _selectedIndex, visibleCapacity, _center, ringRadius);
         var selectedSlot = slots.FirstOrDefault(slot => slot.ItemIndex == _selectedIndex);
         DrawBeam(drawing, center, selectedSlot, plateRadius);
 
         System.Windows.Media.Brush plateFill = highContrast
             ? new SolidColorBrush(WpfSystemColors.WindowColor)
-            : CreateNeutralAcrylicBrush(_settings.PlateOpacity);
+            : CreateNeutralAcrylicBrush(_settings.PlateOpacity, darkTheme);
         plateFill.Freeze();
         if (!highContrast)
             drawing.DrawEllipse(new SolidColorBrush(Color.FromArgb(42, 0, 0, 0)), null, new Point(center.X, center.Y + 3), plateRadius + 5, plateRadius + 5);
-        drawing.DrawEllipse(plateFill, new Pen(new SolidColorBrush(Color.FromArgb(118, 192, 195, 200)), 1.25), center, plateRadius, plateRadius);
-        drawing.DrawEllipse(null, new Pen(new SolidColorBrush(Color.FromArgb(42, 255, 255, 255)), 1), center, plateRadius - 12, plateRadius - 12);
-        drawing.DrawEllipse(new SolidColorBrush(highContrast ? WpfSystemColors.WindowTextColor : Color.FromRgb(242, 242, 244)), null, center, 5.25, 5.25);
+        var rim = highContrast ? WpfSystemColors.WindowTextColor : darkTheme ? Color.FromArgb(118, 192, 195, 200) : Color.FromArgb(130, 96, 96, 100);
+        var innerRim = darkTheme ? Color.FromArgb(42, 255, 255, 255) : Color.FromArgb(48, 0, 0, 0);
+        drawing.DrawEllipse(plateFill, new Pen(new SolidColorBrush(rim), 1.25), center, plateRadius, plateRadius);
+        drawing.DrawEllipse(null, new Pen(new SolidColorBrush(innerRim), 1), center, plateRadius - 12, plateRadius - 12);
+        drawing.DrawEllipse(new SolidColorBrush(foreground), null, center, 5.25, 5.25);
 
         var animationProgress = IsReducedMotion ? 1 : EaseOut(Math.Min(1, _animation.Elapsed.TotalMilliseconds / SelectionDuration));
         foreach (var slot in slots)
@@ -113,14 +120,16 @@ public sealed class WheelRenderer : FrameworkElement
             var visual = _items[slot.ItemIndex];
             var isSelected = slot.ItemIndex == _selectedIndex;
             var wasSelected = slot.ItemIndex == _previousSelectedIndex;
-            var selectedScale = isSelected ? Lerp(1, 1.34, animationProgress) : wasSelected ? Lerp(1.34, 1, animationProgress) : 1;
+            var selectedScale = isSelected ? Lerp(1, 1.24, animationProgress) : wasSelected ? Lerp(1.24, 1, animationProgress) : 1;
             var size = _settings.IconSize * selectedScale;
             var iconRect = new Rect(slot.Center.X - size / 2, slot.Center.Y - size / 2, size, size);
             if (isSelected)
             {
-                drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(38, 255, 255, 255)), null, Inflate(iconRect, 22), 22, 22);
-                drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(150, 20, 20, 22)), new Pen(Brushes.White, 3), Inflate(iconRect, 10), 18, 18);
-                drawing.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(170, 255, 255, 255)), 1.2), Inflate(iconRect, 4), 13, 13);
+                var halo = darkTheme ? Color.FromArgb(38, 255, 255, 255) : Color.FromArgb(34, 0, 0, 0);
+                var selection = darkTheme ? Color.FromArgb(150, 20, 20, 22) : Color.FromArgb(188, 255, 255, 255);
+                drawing.DrawRoundedRectangle(new SolidColorBrush(halo), null, Inflate(iconRect, 22), 22, 22);
+                drawing.DrawRoundedRectangle(new SolidColorBrush(selection), new Pen(new SolidColorBrush(foreground), 3), Inflate(iconRect, 10), 18, 18);
+                drawing.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(120, foreground.R, foreground.G, foreground.B)), 1.2), Inflate(iconRect, 4), 13, 13);
             }
             drawing.DrawImage(visual.Icon, iconRect);
             _hitRects[slot.ItemIndex] = Inflate(iconRect, 16);
@@ -130,12 +139,12 @@ public sealed class WheelRenderer : FrameworkElement
                 DrawCount(drawing, visual.Item.WindowCount, iconRect.Left - 3, iconRect.Bottom - 9);
             if (visual.IsPinned)
                 DrawPin(drawing, iconRect.Left + 2, iconRect.Top + 3);
-            if (isSelected && _settings.ShowLabels) DrawLabel(drawing, visual.Item.DisplayName, slot.Center.X, iconRect.Bottom + 15);
+            if (isSelected && _settings.ShowLabels) DrawLabel(drawing, visual.Item.DisplayName, slot.Center.X, iconRect.Bottom + 15, darkTheme, foreground);
         }
 
-        if (_items.Count > _settings.MaximumVisibleIcons)
-            DrawPosition(drawing, $"{_selectedIndex + 1} / {_items.Count}", center.X, center.Y + plateRadius - 29);
-        if (!string.IsNullOrWhiteSpace(_status)) DrawStatus(drawing, _status, center.X, center.Y + 17);
+        if (_items.Count > visibleCapacity)
+            DrawPosition(drawing, $"{_selectedIndex + 1} / {_items.Count}", center.X, center.Y - 13, foreground);
+        if (!string.IsNullOrWhiteSpace(_status)) DrawStatus(drawing, _status, center.X, center.Y + 5, darkTheme, foreground);
 
         drawing.Pop();
         drawing.Pop();
@@ -166,7 +175,7 @@ public sealed class WheelRenderer : FrameworkElement
         return geometry;
     }
 
-    private static RadialGradientBrush CreateNeutralAcrylicBrush(double opacity)
+    private static RadialGradientBrush CreateNeutralAcrylicBrush(double opacity, bool darkTheme)
     {
         var brush = new RadialGradientBrush
         {
@@ -177,9 +186,18 @@ public sealed class WheelRenderer : FrameworkElement
             RadiusY = 0.92,
             Opacity = Math.Clamp(opacity, 0.35, 0.95),
         };
-        brush.GradientStops.Add(new GradientStop(Color.FromRgb(78, 79, 82), 0));
-        brush.GradientStops.Add(new GradientStop(Color.FromRgb(42, 43, 46), 0.48));
-        brush.GradientStops.Add(new GradientStop(Color.FromRgb(17, 18, 20), 1));
+        if (darkTheme)
+        {
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(78, 79, 82), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(42, 43, 46), 0.48));
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(17, 18, 20), 1));
+        }
+        else
+        {
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(255, 255, 255), 0));
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(232, 232, 234), 0.52));
+            brush.GradientStops.Add(new GradientStop(Color.FromRgb(204, 204, 207), 1));
+        }
         return brush;
     }
 
@@ -206,27 +224,31 @@ public sealed class WheelRenderer : FrameworkElement
         drawing.DrawText(formatted, new Point(x - formatted.Width / 2, y - formatted.Height / 2));
     }
 
-    private static void DrawStatus(DrawingContext drawing, string status, double x, double y)
+    private static void DrawStatus(DrawingContext drawing, string status, double x, double y, bool darkTheme, Color foreground)
     {
         var display = status.Length > 46 ? string.Concat(status.AsSpan(0, 43), "…") : status;
-        var formatted = Text(display, 12, FontWeights.SemiBold, Color.FromArgb(220, 242, 242, 244));
+        var formatted = Text(display, 12, FontWeights.SemiBold, foreground);
         var rect = new Rect(x - formatted.Width / 2 - 10, y, formatted.Width + 20, formatted.Height + 7);
-        drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(180, 18, 18, 20)), new Pen(new SolidColorBrush(Color.FromArgb(48, 255, 255, 255)), 1), rect, 9, 9);
+        var fill = darkTheme ? Color.FromArgb(190, 18, 18, 20) : Color.FromArgb(205, 255, 255, 255);
+        var border = darkTheme ? Color.FromArgb(48, 255, 255, 255) : Color.FromArgb(52, 0, 0, 0);
+        drawing.DrawRoundedRectangle(new SolidColorBrush(fill), new Pen(new SolidColorBrush(border), 1), rect, 9, 9);
         drawing.DrawText(formatted, new Point(rect.X + 10, rect.Y + 3.5));
     }
 
-    private static void DrawLabel(DrawingContext drawing, string label, double x, double y)
+    private static void DrawLabel(DrawingContext drawing, string label, double x, double y, bool darkTheme, Color foreground)
     {
         var display = label.Length > 38 ? string.Concat(label.AsSpan(0, 35), "…") : label;
-        var formatted = Text(display, 15, FontWeights.SemiBold);
+        var formatted = Text(display, 15, FontWeights.SemiBold, foreground);
         var rect = new Rect(x - formatted.Width / 2 - 13, y, formatted.Width + 26, formatted.Height + 10);
-        drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(225, 16, 16, 18)), new Pen(new SolidColorBrush(Color.FromArgb(65, 255, 255, 255)), 1), rect, 10, 10);
+        var fill = darkTheme ? Color.FromArgb(225, 16, 16, 18) : Color.FromArgb(235, 255, 255, 255);
+        var border = darkTheme ? Color.FromArgb(65, 255, 255, 255) : Color.FromArgb(60, 0, 0, 0);
+        drawing.DrawRoundedRectangle(new SolidColorBrush(fill), new Pen(new SolidColorBrush(border), 1), rect, 10, 10);
         drawing.DrawText(formatted, new Point(rect.X + 13, rect.Y + 5));
     }
 
-    private static void DrawPosition(DrawingContext drawing, string value, double x, double y)
+    private static void DrawPosition(DrawingContext drawing, string value, double x, double y, Color foreground)
     {
-        var formatted = Text(value, 11, FontWeights.Normal, Color.FromArgb(185, 238, 238, 240));
+        var formatted = Text(value, 11, FontWeights.Normal, Color.FromArgb(185, foreground.R, foreground.G, foreground.B));
         drawing.DrawText(formatted, new Point(x - formatted.Width / 2, y - formatted.Height / 2));
     }
 

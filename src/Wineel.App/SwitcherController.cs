@@ -44,15 +44,21 @@ public sealed class SwitcherController : IDisposable
         _icons = new IconResolver(fallbackIcon);
         _keyboard = new KeyboardHookService(CanStartAltSession, input => _dispatcher.BeginInvoke(() => HandleKeyboard(input), DispatcherPriority.Input));
         _hotKey.Pressed += () => BeginSession(SwitcherMode.Latched);
-        _mru.ForegroundChanged += _ => _dispatcher.BeginInvoke(RefreshCache, DispatcherPriority.Background);
+        _mru.ForegroundChanged += handle => _dispatcher.BeginInvoke(() =>
+        {
+            CaptureExclusionCandidate(handle);
+            RefreshCache();
+        }, DispatcherPriority.Background);
         _overlay.ItemClicked += OnItemClicked;
         _overlay.ItemSelected += OnItemSelected;
         _overlay.ItemContextRequested += OnItemContextRequested;
         _overlay.OutsideClicked += () => { if (_state.IsActive && _state.Mode == SwitcherMode.Latched) Cancel(); };
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        CaptureExclusionCandidate(Native.GetForegroundWindow());
     }
 
     public AppSettings Settings { get; private set; }
+    public string? ExclusionCandidatePath { get; private set; }
     public event Action<AppSettings>? SettingsApplied;
     public event Action<string>? Notification;
 
@@ -67,6 +73,7 @@ public sealed class SwitcherController : IDisposable
 
     public void UpdateSettings(AppSettings settings)
     {
+        var previous = Settings;
         Settings = settings;
         try { _settingsStore.Save(settings); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -74,17 +81,33 @@ public sealed class SwitcherController : IDisposable
             RollingFileLogger.Instance.Error("Unable to save settings.", exception);
             Notification?.Invoke("Wineel could not save settings. Check the Logs folder for details.");
         }
-        if (!_hotKey.Register(settings.FallbackShortcut)) Notification?.Invoke($"The shortcut {settings.FallbackShortcut} is already in use.");
-        ApplyStartup(settings.StartWithWindows);
+        if (!string.Equals(previous.FallbackShortcut, settings.FallbackShortcut, StringComparison.OrdinalIgnoreCase)
+            && !_hotKey.Register(settings.FallbackShortcut))
+            Notification?.Invoke($"The shortcut {settings.FallbackShortcut} is already in use.");
+        if (previous.StartWithWindows != settings.StartWithWindows) ApplyStartup(settings.StartWithWindows);
         if (settings.IsPaused && _state.IsActive) Cancel();
-        RefreshCache();
+        if (RequiresCacheRefresh(previous, settings)) RefreshCache();
         SettingsApplied?.Invoke(settings);
     }
+
+    private static bool RequiresCacheRefresh(AppSettings previous, AppSettings current) =>
+        previous.GroupingMode != current.GroupingMode
+        || previous.CurrentVirtualDesktopOnly != current.CurrentVirtualDesktopOnly
+        || !previous.Exclusions.SequenceEqual(current.Exclusions, StringComparer.OrdinalIgnoreCase)
+        || !previous.PinnedIdentities.SequenceEqual(current.PinnedIdentities, StringComparer.OrdinalIgnoreCase);
 
     public void TogglePause() => UpdateSettings(Settings with { IsPaused = !Settings.IsPaused });
     public void ToggleReplacement() => UpdateSettings(Settings with { ReplaceAltTab = !Settings.ReplaceAltTab });
     public void ToggleStartup() => UpdateSettings(Settings with { StartWithWindows = !Settings.StartWithWindows });
     public void TryWineel() => BeginSession(SwitcherMode.Latched);
+
+    private void CaptureExclusionCandidate(nint handle)
+    {
+        if (handle == 0 || ForegroundApplicationInfo.IsShellSurface(handle)) return;
+        var path = ForegroundApplicationInfo.GetExecutablePath(handle);
+        if (string.IsNullOrWhiteSpace(path) || string.Equals(path, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)) return;
+        ExclusionCandidatePath = path;
+    }
 
     private bool CanStartAltSession()
     {
@@ -142,7 +165,8 @@ public sealed class SwitcherController : IDisposable
             case >= KeyboardHookCommand.Select0 and <= KeyboardHookCommand.Select9:
                 var digit = (int)command - (int)KeyboardHookCommand.Select0;
                 var viewportIndex = digit == 0 ? 9 : digit - 1;
-                var slots = RadialLayout.Calculate(_state.Items.Count, _state.SelectedIndex, Settings.MaximumVisibleIcons, new LogicalPoint(0, 0), 1);
+                var capacity = WheelCapacity.Calculate(Settings.WheelSize, Settings.IconSize, Settings.MaximumVisibleIcons);
+                var slots = RadialLayout.Calculate(_state.Items.Count, _state.SelectedIndex, capacity, new LogicalPoint(0, 0), 1);
                 var result = _state.SelectNumber(viewportIndex, slots);
                 if (result.SelectionChanged) _overlay.SetSelection(_state.SelectedIndex);
                 break;
@@ -343,9 +367,9 @@ public sealed class SwitcherController : IDisposable
     private string BuildStatus()
     {
         if (!string.IsNullOrWhiteSpace(_transientStatus)) return _transientStatus;
-        if (_searchQuery.Length > 0) return _sessionViewItems.Count == 0 ? $"No matches · {_searchQuery}" : $"Search · {_searchQuery}";
-        if (_drillParent is not null) return $"Windows · {_drillParent.Item.DisplayName} · Backspace to return";
-        return "Type to search · Space for windows · Ctrl+P pin";
+        if (_searchQuery.Length > 0) return _sessionViewItems.Count == 0 ? $"No matches for “{_searchQuery}” · Backspace to edit" : $"Search · {_searchQuery}";
+        if (_drillParent is not null) return $"{_drillParent.Item.DisplayName} windows · Backspace to return";
+        return "Type to search · Space: windows";
     }
 
     private void ApplyStartup(bool enabled)

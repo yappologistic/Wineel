@@ -29,6 +29,7 @@ public partial class App : System.Windows.Application
         RollingFileLogger.Instance.Configure(Path.Combine(_dataRoot, "Logs"));
         _settingsStore = new SettingsStore(Path.Combine(_dataRoot, "settings.json"));
         var settings = _settingsStore.Load();
+        ThemeService.Apply(settings.ThemeMode);
         if (_settingsStore.LastRecoveryBackup is not null)
             RollingFileLogger.Instance.Warning("Corrupt settings were backed up and defaults restored.");
 
@@ -73,6 +74,7 @@ public partial class App : System.Windows.Application
     private void ShowSettings()
     {
         if (_settingsWindow is null) return;
+        _settingsWindow.SetExclusionCandidate(_controller?.ExclusionCandidatePath ?? ForegroundApplicationInfo.GetExecutablePath());
         _settingsWindow.LoadSettings(_controller?.Settings ?? new AppSettings());
         _settingsWindow.Show();
         _settingsWindow.Activate();
