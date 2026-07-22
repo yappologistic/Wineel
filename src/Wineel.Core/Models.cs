@@ -45,7 +45,7 @@ public sealed record RadialSlot(int ItemIndex, int ViewportIndex, double AngleRa
 
 public sealed record AppSettings
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
     public int Version { get; init; } = CurrentVersion;
     public bool ReplaceAltTab { get; init; }
     public string FallbackShortcut { get; init; } = "Ctrl+Alt+Space";
@@ -70,6 +70,7 @@ public sealed record AppSettings
     public bool RepeatTabEnabled { get; init; } = true;
     public bool MouseClickSelection { get; init; } = true;
     public bool WrapSelection { get; init; } = true;
+    public IReadOnlyList<string> PinnedIdentities { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Exclusions { get; init; } = Array.Empty<string>();
     public bool OnboardingCompleted { get; init; }
 }

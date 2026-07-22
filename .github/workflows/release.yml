@@ -27,13 +27,14 @@ jobs:
             throw "Release tags must use vMAJOR.MINOR.PATCH; received $env:TAG_NAME"
           }
           $version = $env:TAG_NAME.Substring(1)
-          [xml]$project = Get-Content src/Wineel.App/Wineel.App.csproj
-          $projectVersion = [string]$project.Project.PropertyGroup.Version
+          [xml]$project = Get-Content Directory.Build.props
+          $projectVersion = [string]$project.Project.PropertyGroup.VersionPrefix
           if ($projectVersion -ne $version) {
             throw "Tag version $version does not match project version $projectVersion"
           }
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "RELEASE_ARCHIVE=Wineel-$version-win-x64-portable.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_INSTALLER=Wineel-$version-win-x64-setup.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Restore
         run: dotnet restore Wineel.sln -p:Platform=x64
@@ -44,15 +45,67 @@ jobs:
       - name: Test
         run: dotnet test Wineel.sln -c Release -p:Platform=x64 --no-build --no-restore
 
-      - name: Publish portable package
+      - name: Publish application
         shell: pwsh
-        run: ./scripts/publish.ps1 -Version $env:RELEASE_VERSION
+        run: ./scripts/publish.ps1 -Version $env:RELEASE_VERSION -SkipArchive
+
+      - name: Configure optional code signing
+        id: signing
+        shell: pwsh
+        env:
+          SIGN_CERT_BASE64: ${{ secrets.WINEEL_SIGN_CERT_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGN_CERT_BASE64)) {
+            "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "No signing certificate is configured; release artifacts will be unsigned."
+            exit 0
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'wineel-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:SIGN_CERT_BASE64))
+          "SIGN_CERT_PATH=$certificatePath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Sign portable executable
+        if: steps.signing.outputs.configured == 'true'
+        shell: pwsh
+        env:
+          SIGN_CERT_PASSWORD: ${{ secrets.WINEEL_SIGN_CERT_PASSWORD }}
+        run: ./scripts/sign.ps1 -CertificatePath $env:SIGN_CERT_PATH -CertificatePassword $env:SIGN_CERT_PASSWORD -Files artifacts/publish/win-x64/Wineel.exe
+
+      - name: Package portable build
+        shell: pwsh
+        run: ./scripts/package-portable.ps1 -Version $env:RELEASE_VERSION
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -Version $env:RELEASE_VERSION
+
+      - name: Sign installer
+        if: steps.signing.outputs.configured == 'true'
+        shell: pwsh
+        env:
+          SIGN_CERT_PASSWORD: ${{ secrets.WINEEL_SIGN_CERT_PASSWORD }}
+        run: ./scripts/sign.ps1 -CertificatePath $env:SIGN_CERT_PATH -CertificatePassword $env:SIGN_CERT_PASSWORD -Files "artifacts/installer/$env:RELEASE_INSTALLER"
+
+      - name: Generate checksums and WinGet manifest
+        shell: pwsh
+        run: |
+          ./scripts/checksums.ps1 -Files "artifacts/$env:RELEASE_ARCHIVE", "artifacts/installer/$env:RELEASE_INSTALLER"
+          ./scripts/generate-winget.ps1 -Version $env:RELEASE_VERSION -InstallerPath "artifacts/installer/$env:RELEASE_INSTALLER"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Wineel-${{ env.RELEASE_VERSION }}-win-x64-portable
-          path: artifacts/${{ env.RELEASE_ARCHIVE }}
+          name: Wineel-${{ env.RELEASE_VERSION }}-release
+          path: |
+            artifacts/${{ env.RELEASE_ARCHIVE }}
+            artifacts/installer/${{ env.RELEASE_INSTALLER }}
+            artifacts/SHA256SUMS.txt
+            artifacts/winget/${{ env.RELEASE_VERSION }}/yappologistic.Wineel.yaml
           if-no-files-found: error
 
       - name: Create GitHub release
@@ -60,4 +113,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release create $env:TAG_NAME "artifacts/$env:RELEASE_ARCHIVE" --verify-tag --title "Wineel $env:RELEASE_VERSION" --generate-notes
+        run: |
+          gh release create $env:TAG_NAME `
+            "artifacts/$env:RELEASE_ARCHIVE" `
+            "artifacts/installer/$env:RELEASE_INSTALLER" `
+            "artifacts/SHA256SUMS.txt" `
+            "artifacts/winget/$env:RELEASE_VERSION/yappologistic.Wineel.yaml" `
+            --verify-tag --title "Wineel $env:RELEASE_VERSION" --generate-notes
+
+      - name: Remove signing certificate
+        if: always() && steps.signing.outputs.configured == 'true'
+        shell: pwsh
+        run: Remove-Item -LiteralPath $env:SIGN_CERT_PATH -Force -ErrorAction SilentlyContinue

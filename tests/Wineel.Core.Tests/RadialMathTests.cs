@@ -54,11 +54,50 @@ public sealed class RadialMathTests
 
     [Theory]
     [InlineData(96, 150, 150)]
+    [InlineData(120, 160, 200)]
     [InlineData(144, 150, 225)]
+    [InlineData(168, 192, 336)]
     [InlineData(192, 64, 128)]
     public void DpiConversionsAreStable(double dpi, double dips, double pixels)
     {
         Assert.Equal(pixels, DpiMath.DipsToPixels(dips, dpi), 6);
         Assert.Equal(dips, DpiMath.PixelsToDips(pixels, dpi), 6);
+    }
+
+    [Theory]
+    [InlineData(96)]
+    [InlineData(120)]
+    [InlineData(144)]
+    [InlineData(168)]
+    [InlineData(192)]
+    public void DpiRoundTripSupportsCommonMixedMonitorScales(double dpi)
+    {
+        const double coordinate = -731.25;
+        var pixels = DpiMath.DipsToPixels(coordinate, dpi);
+        Assert.Equal(coordinate, DpiMath.PixelsToDips(pixels, dpi), 6);
+    }
+
+    [Theory]
+    [InlineData(-1920, 0, 1920, 1040, -2200, 900, -1670, 790)]
+    [InlineData(0, -1440, 2560, 1400, 2450, -1500, 2310, -1190)]
+    [InlineData(-1280, -1024, 1280, 984, -2000, -2000, -1030, -774)]
+    public void ClampHandlesNegativeOriginsAndTaskbarWorkAreas(
+        double x, double y, double width, double height,
+        double desiredX, double desiredY, double expectedX, double expectedY)
+    {
+        var result = MonitorPlacement.ClampWheelCenter(
+            new LogicalPoint(desiredX, desiredY),
+            new LogicalRect(x, y, width, height),
+            220,
+            30);
+        Assert.Equal(expectedX, result.X, 6);
+        Assert.Equal(expectedY, result.Y, 6);
+    }
+
+    [Fact]
+    public void ZeroDpiFallsBackToNinetySix()
+    {
+        Assert.Equal(125, DpiMath.DipsToPixels(125, 0), 6);
+        Assert.Equal(125, DpiMath.PixelsToDips(125, -1), 6);
     }
 }

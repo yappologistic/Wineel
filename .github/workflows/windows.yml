@@ -24,9 +24,9 @@ jobs:
         run: dotnet test Wineel.sln -c Release -p:Platform=x64 --no-build --no-restore
       - name: Publish portable package
         shell: pwsh
-        run: ./scripts/publish.ps1 -Version 0.0.1
+        run: ./scripts/publish.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: Wineel-win-x64-portable
-          path: artifacts/Wineel-0.0.1-win-x64-portable.zip
+          path: artifacts/Wineel-*-win-x64-portable.zip
           if-no-files-found: error

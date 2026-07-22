@@ -14,6 +14,7 @@ public sealed class TrayService : IDisposable
     public event Action? PauseRequested;
     public event Action? ReplacementRequested;
     public event Action? StartupRequested;
+    public event Action? ExportDiagnosticsRequested;
     public event Action? ExitRequested;
 
     public TrayService()
@@ -27,7 +28,8 @@ public sealed class TrayService : IDisposable
         _startup = new Forms.ToolStripMenuItem("Start with Windows", null, (_, _) => StartupRequested?.Invoke());
         menu.Items.Add(_pause); menu.Items.Add(_replacement); menu.Items.Add(_startup);
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("About Wineel", null, (_, _) => Forms.MessageBox.Show("Wineel 1.0\nA fast radial application switcher for Windows.\n\nNo telemetry. No network communication.", "About Wineel", Forms.MessageBoxButtons.OK, Forms.MessageBoxIcon.Information));
+        menu.Items.Add("Export diagnostics…", null, (_, _) => ExportDiagnosticsRequested?.Invoke());
+        menu.Items.Add("About Wineel", null, (_, _) => Forms.MessageBox.Show($"Wineel {ApplicationInfo.Version}\nA fast radial application switcher for Windows.\n\nNo telemetry. No network communication.", "About Wineel", Forms.MessageBoxButtons.OK, Forms.MessageBoxIcon.Information));
         menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke());
         _icon = new Forms.NotifyIcon
         {

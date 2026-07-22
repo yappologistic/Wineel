@@ -5,6 +5,25 @@ namespace Wineel.Tests;
 public sealed class DiscoveryTests
 {
     [Fact]
+    public void PinnedApplicationsLeadWithoutDisturbingRemainingMruOrder()
+    {
+        var items = new[] { Item("a"), Item("b"), Item("c") };
+        var ordered = SwitcherViews.OrderPinned(items, new[] { "c" });
+        Assert.Equal(new[] { "c", "a", "b" }, ordered.Select(item => item.Identity));
+    }
+
+    [Fact]
+    public void SearchRanksPrefixContainsAndFuzzyMatches()
+    {
+        var items = new[] { Item("terminal", "Windows Terminal"), Item("telegram", "Telegram"), Item("teams", "Microsoft Teams") };
+        Assert.Equal(new[] { "telegram", "terminal" }, SwitcherViews.Filter(items, "tel").Select(item => item.Identity));
+        Assert.Equal("teams", Assert.Single(SwitcherViews.Filter(items, "msteams")).Identity);
+    }
+
+    private static SwitcherItem Item(string identity, string? name = null) =>
+        new(identity, name ?? identity, new nint[] { 1 }, 1, identity, RgbColor.AccentFallback);
+
+    [Fact]
     public void MruPromotesRepeatedWindow()
     {
         var mru = new MruList();
