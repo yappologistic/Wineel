@@ -48,6 +48,7 @@ public partial class SettingsWindow : Window
         RepeatTab.IsChecked = settings.RepeatTabEnabled;
         MouseClickSelection.IsChecked = settings.MouseClickSelection;
         WrapSelection.IsChecked = settings.WrapSelection;
+        PinnedIdentities.ItemsSource = settings.PinnedIdentities.ToArray();
         Exclusions.ItemsSource = settings.Exclusions.ToArray();
         WelcomePanel.Visibility = settings.OnboardingCompleted ? Visibility.Collapsed : Visibility.Visible;
         PauseButton.Content = settings.IsPaused ? "Resume Wineel" : "Pause Wineel";
@@ -84,6 +85,7 @@ public partial class SettingsWindow : Window
         RepeatTabEnabled = RepeatTab.IsChecked == true,
         MouseClickSelection = MouseClickSelection.IsChecked == true,
         WrapSelection = WrapSelection.IsChecked == true,
+        PinnedIdentities = PinnedIdentities.Items.Cast<string>().ToArray(),
         Exclusions = Exclusions.Items.Cast<string>().ToArray(),
     };
 
@@ -113,6 +115,13 @@ public partial class SettingsWindow : Window
     {
         if (Exclusions.SelectedItem is not string selected) return;
         Publish(ReadSettings() with { Exclusions = _settings.Exclusions.Where(item => !string.Equals(item, selected, StringComparison.OrdinalIgnoreCase)).ToArray() });
+        LoadSettings(_settings);
+    }
+
+    private void RemoveFavorite_Click(object sender, RoutedEventArgs e)
+    {
+        if (PinnedIdentities.SelectedItem is not string selected) return;
+        Publish(ReadSettings() with { PinnedIdentities = _settings.PinnedIdentities.Where(item => !string.Equals(item, selected, StringComparison.OrdinalIgnoreCase)).ToArray() });
         LoadSettings(_settings);
     }
 }

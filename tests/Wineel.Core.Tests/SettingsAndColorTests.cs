@@ -22,12 +22,13 @@ public sealed class SettingsAndColorTests
         {
             var path = Path.Combine(directory.FullName, "settings.json");
             var store = new SettingsStore(path);
-            var expected = new AppSettings { ReplaceAltTab = true, WheelSize = 578, GroupingMode = GroupingMode.IndividualWindows, Exclusions = new[] { "C:\\App.exe" } };
+            var expected = new AppSettings { ReplaceAltTab = true, WheelSize = 578, GroupingMode = GroupingMode.IndividualWindows, PinnedIdentities = new[] { "app-id" }, Exclusions = new[] { "C:\\App.exe" } };
             store.Save(expected);
             var actual = store.Load();
             Assert.True(actual.ReplaceAltTab);
             Assert.Equal(578, actual.WheelSize);
             Assert.Equal(GroupingMode.IndividualWindows, actual.GroupingMode);
+            Assert.Equal("app-id", Assert.Single(actual.PinnedIdentities));
             Assert.Equal("C:\\App.exe", Assert.Single(actual.Exclusions));
         }
         finally { directory.Delete(true); }
@@ -73,6 +74,14 @@ public sealed class SettingsAndColorTests
         var customized = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":3,\"WheelSize\":470,\"PlateOpacity\":0.8}")!.AsObject());
         Assert.Equal(470, customized["WheelSize"]!.GetValue<int>());
         Assert.Equal(0.8, customized["PlateOpacity"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public void VersionFourAddsEmptyFavorites()
+    {
+        var migrated = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":4}")!.AsObject());
+        Assert.Equal(AppSettings.CurrentVersion, migrated["Version"]!.GetValue<int>());
+        Assert.Empty(migrated["PinnedIdentities"]!.AsArray());
     }
 
     [Fact]

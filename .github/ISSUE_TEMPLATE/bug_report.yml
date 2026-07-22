@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible Wineel problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please avoid posting private window titles or executable paths. You can export a privacy-safe diagnostic archive from the Wineel tray menu and review it before attaching.
+  - type: input
+    id: version
+    attributes:
+      label: Wineel version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and monitor scaling
+      placeholder: Windows 11 24H2; 100% + 150% monitors
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics or additional context
+      description: Review the exported ZIP before attaching it.

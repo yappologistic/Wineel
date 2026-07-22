@@ -71,6 +71,18 @@ public sealed class InputStateTests
     [Fact]
     public void SingleItemCannotStart() => Assert.False(new SwitcherStateMachine().TryStart(Items(1), 0, SwitcherMode.Latched));
 
+    [Fact]
+    public void ActiveStateCanReplaceItemsForSearchAndRecoverFromNoMatches()
+    {
+        var state = new SwitcherStateMachine();
+        state.TryStart(Items(3), 999, SwitcherMode.Latched);
+        Assert.True(state.ReplaceItems(Array.Empty<SwitcherItem>()));
+        Assert.Equal(-1, state.SelectedIndex);
+        Assert.False(state.Handle(SwitcherCommand.Commit).Closed);
+        Assert.True(state.ReplaceItems(Items(1)));
+        Assert.Equal(0, state.SelectedIndex);
+    }
+
     private static IReadOnlyList<SwitcherItem> Items(int count) => Enumerable.Range(1, count)
         .Select(index => new SwitcherItem($"app-{index}", $"App {index}", new nint[] { index }, index, $"app-{index}", RgbColor.AccentFallback)).ToArray();
 }

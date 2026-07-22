@@ -7,12 +7,16 @@ public partial class OverlayWindow : Window
 {
     private nint _handle;
     public event Action<int>? ItemClicked;
+    public event Action<int>? ItemSelected;
+    public event Action<int>? ItemContextRequested;
     public event Action? OutsideClicked;
 
     public OverlayWindow()
     {
         InitializeComponent();
         Renderer.ItemClicked += index => ItemClicked?.Invoke(index);
+        Renderer.ItemSelected += index => ItemSelected?.Invoke(index);
+        Renderer.ItemContextRequested += index => ItemContextRequested?.Invoke(index);
         Renderer.OutsideClicked += () => OutsideClicked?.Invoke();
         SourceInitialized += OnSourceInitialized;
     }
@@ -24,7 +28,7 @@ public partial class OverlayWindow : Window
         _ = SetWindowLongPtr(_handle, Native.GwlExstyle, new nint(style | Native.WsExToolwindow | Native.WsExNoactivate | Native.WsExLayered));
     }
 
-    public void ShowSession(MonitorSnapshot monitor, IReadOnlyList<VisualSwitcherItem> items, int selectedIndex, LogicalPoint cursor, AppSettings settings)
+    public void ShowSession(MonitorSnapshot monitor, IReadOnlyList<VisualSwitcherItem> items, int selectedIndex, LogicalPoint cursor, AppSettings settings, string status = "")
     {
         if (!IsVisible) Show();
         _handle = _handle == 0 ? new WindowInteropHelper(this).Handle : _handle;
@@ -42,13 +46,14 @@ public partial class OverlayWindow : Window
             ? cursor
             : new LogicalPoint(work.X + work.Width / 2, work.Y + work.Height / 2);
         var center = MonitorPlacement.ClampWheelCenter(desiredCenter, work, radius, 28);
-        Renderer.SetSession(items, selectedIndex, center, settings);
+        Renderer.SetSession(items, selectedIndex, center, settings, status);
         _ = Native.SetWindowPos(_handle, Native.HwndTopmost, monitor.Left, monitor.Top, monitor.Width, monitor.Height,
             Native.SwpNoactivate | Native.SwpShowwindow);
         _ = ShowWindow(_handle, Native.SwShownoactivate);
     }
 
     public void SetSelection(int selectedIndex) => Renderer.SetSelection(selectedIndex);
+    public void UpdateSession(IReadOnlyList<VisualSwitcherItem> items, int selectedIndex, string status) => Renderer.UpdateSession(items, selectedIndex, status);
 
     public void CloseSession()
     {

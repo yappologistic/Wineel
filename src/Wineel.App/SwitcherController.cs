@@ -24,6 +24,13 @@ public sealed class SwitcherController : IDisposable
     private readonly WheelDeltaAccumulator _wheel = new();
     private MouseHookService? _mouse;
     private IReadOnlyList<VisualSwitcherItem> _cached = Array.Empty<VisualSwitcherItem>();
+    private IReadOnlyList<WindowCandidate> _latestWindows = Array.Empty<WindowCandidate>();
+    private IReadOnlyList<VisualSwitcherItem> _sessionRootItems = Array.Empty<VisualSwitcherItem>();
+    private IReadOnlyList<VisualSwitcherItem> _sessionViewItems = Array.Empty<VisualSwitcherItem>();
+    private IReadOnlyList<VisualSwitcherItem> _drillItems = Array.Empty<VisualSwitcherItem>();
+    private VisualSwitcherItem? _drillParent;
+    private string _searchQuery = string.Empty;
+    private string _transientStatus = string.Empty;
     private int _refreshGeneration;
     private bool _disposed;
 
@@ -35,10 +42,12 @@ public sealed class SwitcherController : IDisposable
         _overlay = overlay;
         _enumerator = new WindowEnumerator(new VirtualDesktopService());
         _icons = new IconResolver(fallbackIcon);
-        _keyboard = new KeyboardHookService(CanStartAltSession, command => _dispatcher.BeginInvoke(() => HandleKeyboard(command), DispatcherPriority.Input));
+        _keyboard = new KeyboardHookService(CanStartAltSession, input => _dispatcher.BeginInvoke(() => HandleKeyboard(input), DispatcherPriority.Input));
         _hotKey.Pressed += () => BeginSession(SwitcherMode.Latched);
         _mru.ForegroundChanged += _ => _dispatcher.BeginInvoke(RefreshCache, DispatcherPriority.Background);
         _overlay.ItemClicked += OnItemClicked;
+        _overlay.ItemSelected += OnItemSelected;
+        _overlay.ItemContextRequested += OnItemContextRequested;
         _overlay.OutsideClicked += () => { if (_state.IsActive && _state.Mode == SwitcherMode.Latched) Cancel(); };
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
@@ -96,9 +105,15 @@ public sealed class SwitcherController : IDisposable
         }
         _keyboard.SetSessionActive(true, mode == SwitcherMode.AltHeld);
         _wheel.Reset();
+        _sessionRootItems = _cached;
+        _sessionViewItems = _cached;
+        _drillItems = Array.Empty<VisualSwitcherItem>();
+        _drillParent = null;
+        _searchQuery = string.Empty;
+        _transientStatus = string.Empty;
         var monitor = _pointer.GetCurrent();
         var cursor = _pointer.GetCursorOnMonitor(monitor);
-        _overlay.ShowSession(monitor, _cached, _state.SelectedIndex, cursor, Settings);
+        _overlay.ShowSession(monitor, _sessionViewItems, _state.SelectedIndex, cursor, Settings, BuildStatus());
         _mouse = new MouseHookService(delta => _dispatcher.BeginInvoke(() => HandleWheel(delta), DispatcherPriority.Input));
         if (!_mouse.Install())
         {
@@ -108,8 +123,9 @@ public sealed class SwitcherController : IDisposable
         }
     }
 
-    private void HandleKeyboard(KeyboardHookCommand command)
+    private void HandleKeyboard(KeyboardHookInput input)
     {
+        var command = input.Command;
         if (command == KeyboardHookCommand.BeginAlt) { BeginSession(SwitcherMode.AltHeld); return; }
         if (!_state.IsActive) { _keyboard.SetSessionActive(false); return; }
         switch (command)
@@ -118,6 +134,10 @@ public sealed class SwitcherController : IDisposable
             case KeyboardHookCommand.Previous when Settings.RepeatTabEnabled: Move(SwitcherCommand.Previous); break;
             case KeyboardHookCommand.Commit: Commit(); break;
             case KeyboardHookCommand.Cancel: Cancel(); break;
+            case KeyboardHookCommand.DrillDown: EnterDrillDownOrCommit(); break;
+            case KeyboardHookCommand.SearchBackspace: HandleBackspace(); break;
+            case KeyboardHookCommand.SearchCharacter: AddSearchCharacter(input.Character); break;
+            case KeyboardHookCommand.TogglePin: TogglePin(); break;
             case KeyboardHookCommand.AltReleased when _state.Mode == SwitcherMode.AltHeld: Commit(); break;
             case >= KeyboardHookCommand.Select0 and <= KeyboardHookCommand.Select9:
                 var digit = (int)command - (int)KeyboardHookCommand.Select0;
@@ -140,23 +160,44 @@ public sealed class SwitcherController : IDisposable
     private void Move(SwitcherCommand command)
     {
         var result = _state.Handle(command, Settings.WrapSelection);
-        if (result.SelectionChanged) _overlay.SetSelection(_state.SelectedIndex);
+        if (result.SelectionChanged)
+        {
+            _transientStatus = string.Empty;
+            _overlay.SetSelection(_state.SelectedIndex);
+        }
     }
 
     private void OnItemClicked(int index)
     {
         if (!Settings.MouseClickSelection || !_state.IsActive) return;
-        var result = _state.SelectVisible(index, true);
-        CloseVisuals();
-        if (result.Committed) ActivateLater(result.TargetWindow);
+        var result = _state.SelectVisible(index, false);
+        if (result.SelectionChanged) _overlay.SetSelection(_state.SelectedIndex);
+        if (_drillParent is null && _state.Items[index].WindowCount > 1) EnterDrillDownOrCommit();
+        else Commit();
+    }
+
+    private void OnItemContextRequested(int index)
+    {
+        if (!_state.IsActive || index < 0 || index >= _state.Items.Count) return;
+        _ = _state.SelectVisible(index, false);
+        _overlay.SetSelection(_state.SelectedIndex);
+        TogglePin();
+    }
+
+    private void OnItemSelected(int index)
+    {
+        if (!_state.IsActive || index < 0 || index >= _state.Items.Count) return;
+        var result = _state.SelectVisible(index, false);
+        if (result.SelectionChanged) _overlay.SetSelection(_state.SelectedIndex);
     }
 
     private void Commit()
     {
-        if (!_state.IsActive) return;
+        if (!_state.IsActive || _state.SelectedIndex < 0 || _state.SelectedIndex >= _state.Items.Count) return;
         var attempts = _state.Items.Count;
         while (attempts-- > 0 && !Native.IsWindow(_state.Items[_state.SelectedIndex].TargetWindow)) Move(SwitcherCommand.Next);
         var result = _state.Handle(SwitcherCommand.Commit, Settings.WrapSelection);
+        if (!result.Closed) return;
         CloseVisuals();
         if (result.Committed && Native.IsWindow(result.TargetWindow)) ActivateLater(result.TargetWindow);
     }
@@ -175,6 +216,12 @@ public sealed class SwitcherController : IDisposable
         _mouse = null;
         _keyboard.SetSessionActive(false);
         _wheel.Reset();
+        _sessionRootItems = Array.Empty<VisualSwitcherItem>();
+        _sessionViewItems = Array.Empty<VisualSwitcherItem>();
+        _drillItems = Array.Empty<VisualSwitcherItem>();
+        _drillParent = null;
+        _searchQuery = string.Empty;
+        _transientStatus = string.Empty;
     }
 
     private void ActivateLater(nint target) => _dispatcher.BeginInvoke(() =>
@@ -195,13 +242,110 @@ public sealed class SwitcherController : IDisposable
             return;
         }
         if (generation != _refreshGeneration) return;
-        var grouped = ApplicationGrouper.Group(windows, _mru.Mru.Snapshot(), Settings.GroupingMode);
+        _latestWindows = windows;
+        var grouped = SwitcherViews.OrderPinned(
+            ApplicationGrouper.Group(windows, _mru.Mru.Snapshot(), Settings.GroupingMode),
+            Settings.PinnedIdentities);
         var pathByHandle = windows.ToDictionary(window => window.Handle, window => window.ExecutablePath);
         _cached = grouped.Select(item =>
         {
             var resolved = _icons.Resolve(item, pathByHandle.GetValueOrDefault(item.TargetWindow));
+            var pinned = Settings.PinnedIdentities.Contains(item.Identity, StringComparer.OrdinalIgnoreCase);
+            return new VisualSwitcherItem(item with { AccentColor = resolved.Accent }, resolved.Image, resolved.Accent, pinned);
+        }).ToArray();
+    }
+
+    private void AddSearchCharacter(char character)
+    {
+        if (!char.IsLetterOrDigit(character) || _searchQuery.Length >= 32) return;
+        _searchQuery += char.ToLowerInvariant(character);
+        _transientStatus = string.Empty;
+        ApplySessionView();
+    }
+
+    private void HandleBackspace()
+    {
+        if (_searchQuery.Length > 0)
+        {
+            _searchQuery = _searchQuery[..^1];
+            _transientStatus = string.Empty;
+            ApplySessionView();
+            return;
+        }
+        if (_drillParent is not null) ExitDrillDown();
+    }
+
+    private void EnterDrillDownOrCommit()
+    {
+        if (!_state.IsActive || _state.SelectedIndex < 0 || _state.SelectedIndex >= _sessionViewItems.Count) return;
+        if (_drillParent is not null) { Commit(); return; }
+        var parent = _sessionViewItems[_state.SelectedIndex];
+        if (parent.Item.WindowCount <= 1) { Commit(); return; }
+
+        var children = SwitcherViews.CreateWindowItems(parent.Item, _latestWindows);
+        if (children.Count <= 1) { Commit(); return; }
+        var pathByHandle = _latestWindows.ToDictionary(window => window.Handle, window => window.ExecutablePath);
+        _drillParent = parent;
+        _drillItems = children.Select(item =>
+        {
+            var resolved = _icons.Resolve(item, pathByHandle.GetValueOrDefault(item.TargetWindow));
             return new VisualSwitcherItem(item with { AccentColor = resolved.Accent }, resolved.Image, resolved.Accent);
         }).ToArray();
+        _searchQuery = string.Empty;
+        var preferred = _drillItems.FirstOrDefault(item => item.Item.TargetWindow == parent.Item.TargetWindow)?.Item.Identity;
+        _state.ReplaceItems(_drillItems.Select(item => item.Item).ToArray(), preferred);
+        _sessionViewItems = _drillItems;
+        _overlay.UpdateSession(_sessionViewItems, _state.SelectedIndex, BuildStatus());
+    }
+
+    private void ExitDrillDown()
+    {
+        var parentIdentity = _drillParent?.Item.Identity;
+        _drillParent = null;
+        _drillItems = Array.Empty<VisualSwitcherItem>();
+        _searchQuery = string.Empty;
+        _state.ReplaceItems(_sessionRootItems.Select(item => item.Item).ToArray(), parentIdentity);
+        _sessionViewItems = _sessionRootItems;
+        _overlay.UpdateSession(_sessionViewItems, _state.SelectedIndex, BuildStatus());
+    }
+
+    private void TogglePin()
+    {
+        if (!_state.IsActive || _state.SelectedIndex < 0 || _state.SelectedIndex >= _sessionViewItems.Count) return;
+        var rootIdentity = _drillParent?.Item.Identity ?? _sessionViewItems[_state.SelectedIndex].Item.Identity;
+        var wasPinned = Settings.PinnedIdentities.Contains(rootIdentity, StringComparer.OrdinalIgnoreCase);
+        var pins = wasPinned
+            ? Settings.PinnedIdentities.Where(identity => !string.Equals(identity, rootIdentity, StringComparison.OrdinalIgnoreCase)).ToArray()
+            : Settings.PinnedIdentities.Append(rootIdentity).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        UpdateSettings(Settings with { PinnedIdentities = pins });
+        _sessionRootItems = _cached;
+        if (_drillParent is not null)
+        {
+            _drillParent = _sessionRootItems.FirstOrDefault(item => string.Equals(item.Item.Identity, rootIdentity, StringComparison.OrdinalIgnoreCase)) ?? _drillParent;
+            _drillItems = SwitcherViews.CreateWindowItems(_drillParent.Item, _latestWindows)
+                .Select(item => new VisualSwitcherItem(item, _drillParent.Icon, _drillParent.Accent))
+                .ToArray();
+        }
+        _transientStatus = wasPinned ? $"Unpinned {_drillParent?.Item.DisplayName ?? rootIdentity}" : $"Pinned {_drillParent?.Item.DisplayName ?? rootIdentity}";
+        ApplySessionView(rootIdentity);
+    }
+
+    private void ApplySessionView(string? preferredIdentity = null)
+    {
+        var source = _drillParent is null ? _sessionRootItems : _drillItems;
+        var filtered = SwitcherViews.Filter(source.Select(item => item.Item).ToArray(), _searchQuery);
+        var byIdentity = source.ToDictionary(item => item.Item.Identity, StringComparer.OrdinalIgnoreCase);
+        _sessionViewItems = filtered.Select(item => byIdentity[item.Identity]).ToArray();
+        _state.ReplaceItems(filtered, preferredIdentity);
+        _overlay.UpdateSession(_sessionViewItems, _state.SelectedIndex, BuildStatus());
+    }
+
+    private string BuildStatus()
+    {
+        if (!string.IsNullOrWhiteSpace(_transientStatus)) return _transientStatus;
+        if (_searchQuery.Length > 0) return _sessionViewItems.Count == 0 ? $"No matches · {_searchQuery}" : $"Search · {_searchQuery}";
+        if (_drillParent is not null) return $"Windows · {_drillParent.Item.DisplayName} · Backspace to return";
+        return "Type to search · Space for windows · Ctrl+P pin";
     }
 
     private void ApplyStartup(bool enabled)

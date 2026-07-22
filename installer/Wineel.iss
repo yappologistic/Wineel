@@ -1,6 +1,8 @@
 #define MyAppName "Wineel"
-#define MyAppVersion "0.0.1"
-#define MyAppPublisher "Wineel"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.0"
+#endif
+#define MyAppPublisher "yappologistic"
 #define MyAppExeName "Wineel.exe"
 
 [Setup]

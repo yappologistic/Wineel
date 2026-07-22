@@ -8,11 +8,13 @@ Wineel is a fast, native radial application switcher for Windows 10 and 11. Hold
 
 - Native C#/.NET 10 WPF application—no browser runtime or local server.
 - No-activate, per-monitor-DPI overlay centered on the pointer's monitor by default, with optional pointer-following placement.
-- Mouse wheel, repeated Tab, Shift+Tab, arrows, number badges, click, Enter, and Escape controls.
-- Application grouping by package identity or canonical executable path, with an individual-windows mode.
+- Instant type-to-search, mouse wheel, repeated Tab, Shift+Tab, arrows, number badges, click, Enter, and Escape controls.
+- Application grouping by package identity or canonical executable path, with Space-driven window drill-down and an individual-windows mode.
+- Favorites that keep pinned applications at the front of the wheel; toggle them with `Ctrl+P` or right-click.
 - MRU ordering from `SetWinEventHook`, Alt+Tab-style filtering, minimized-window restore, and foreground activation fallback.
 - Dynamic app icons, icon-derived beam colors, and a neutral acrylic-style wheel surface.
-- System tray lifecycle, first-run onboarding, per-user startup, single-instance signaling, versioned settings, and rolling local logs.
+- System tray lifecycle, first-run onboarding, per-user startup, single-instance signaling, versioned settings, rolling local logs, and privacy-safe diagnostics export.
+- UI Automation list, selection, and invocation patterns for screen readers and assistive tooling.
 - No telemetry, accounts, advertising, analytics, or network communication.
 
 ## System requirements
@@ -27,7 +29,7 @@ The portable build is self-contained; users do not need to install .NET.
 
 Portable:
 
-1. Download or build `Wineel-0.0.1-win-x64-portable.zip`.
+1. Download `Wineel-0.1.0-win-x64-portable.zip` or the `Wineel-0.1.0-win-x64-setup.exe` installer from the GitHub release.
 2. Extract the entire archive to a writable folder.
 3. Run `Wineel.exe`.
 
@@ -53,6 +55,10 @@ Later launches remain in the tray unless **Launch minimized to the system tray**
 | Mouse wheel down / up | Next / previous application |
 | `Tab` / `Shift+Tab` | Next / previous application |
 | Arrow keys | Move backward / forward |
+| Type letters | Filter open applications by name |
+| `Space` | Open a grouped application and choose a specific window |
+| `Backspace` | Erase search text, or return from the window list |
+| `Ctrl+P` or right-click | Pin or unpin the selected application |
 | `1`–`9`, `0` | Select the corresponding visible badge |
 | `Enter` | Activate selection |
 | Click an icon | Activate it immediately |
@@ -63,9 +69,12 @@ Later launches remain in the tray unless **Launch minimized to the system tray**
 - **General:** Alt+Tab replacement, configurable fallback shortcut, startup, tray launch, pause, grouping mode, current virtual desktop, and full-screen suppression.
 - **Appearance:** monitor-centered or pointer-following placement, wheel and icon size, 4–12 visible icons, plate opacity, beam intensity, animation speed, labels, badges, theme, and reduced motion.
 - **Input:** wheel direction, repeated Tab, mouse click selection, wrapping, and reset.
+- **Favorites:** review and remove pinned application identities.
 - **Exclusions:** executable paths or stable application identities, including the currently active application.
 
 Settings are saved automatically to `%LocalAppData%\Wineel\settings.json`. A corrupt file is renamed with a `.corrupt-<timestamp>.json` suffix before defaults are restored. Diagnostic logs are kept under `%LocalAppData%\Wineel\Logs` for seven days; window titles and raw keystrokes are never logged.
+
+Choose **Export diagnostics…** from the tray menu to create a reviewable ZIP. It excludes window titles, raw keystrokes, executable paths, names of pinned/excluded applications, the Windows user name, and the machine name.
 
 ## Build and test from source
 
@@ -76,20 +85,25 @@ Install the .NET 10 SDK on Windows, then run:
 ./scripts/test.ps1
 ```
 
-The solution targets `net10.0-windows10.0.19041.0` and x64. The test suite covers radial geometry, monitor clamping, DPI calculations, precision-wheel accumulation, wraparound, switching state, cancellation and commit, MRU ordering, grouping, filter predicates, long viewports, badges, settings persistence/recovery/migration, shortcut parsing, and dominant-color selection.
+The solution targets `net10.0-windows10.0.19041.0` and x64. The test suite covers radial geometry, mixed-DPI conversion and monitor clamping, precision-wheel accumulation, wraparound, switching state, cancellation and commit, MRU ordering, grouping, type-to-search ranking, favorites, filter predicates, long viewports, badges, settings persistence/recovery/migration, shortcut parsing, and dominant-color selection. The release smoke matrix is documented in [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md).
 
 ## Publishing
 
 ```powershell
-./scripts/publish.ps1 -Version 0.0.1
+./scripts/publish.ps1
 ```
 
 Outputs:
 
 - Self-contained application: `artifacts/publish/win-x64/Wineel.exe`
-- Portable archive: `artifacts/Wineel-0.0.1-win-x64-portable.zip`
+- Portable archive: `artifacts/Wineel-0.1.0-win-x64-portable.zip`
+- Per-user installer: run `./scripts/build-installer.ps1` after publishing; output is `artifacts/installer/Wineel-0.1.0-win-x64-setup.exe`
+- SHA-256 hashes: `./scripts/checksums.ps1`
+- WinGet singleton manifest: `./scripts/generate-winget.ps1`
 
-The Windows GitHub Actions workflow restores, builds, tests, publishes, and uploads the portable archive.
+`Directory.Build.props` is the single source of truth for the application version. Windows CI restores, builds, tests, publishes, and uploads the portable archive. A `vMAJOR.MINOR.PATCH` tag triggers the release workflow, which validates the tag, produces the portable ZIP and Inno Setup installer, generates checksums and a WinGet manifest, and attaches them to the GitHub release.
+
+Release signing is optional and secret-driven. Add repository secrets `WINEEL_SIGN_CERT_BASE64` (the base64-encoded PFX) and `WINEEL_SIGN_CERT_PASSWORD` to Authenticode-sign and verify both executables. Without those secrets the workflow deliberately produces clearly unsigned artifacts; no private certificate material belongs in the repository. After the first generated manifest is accepted into `microsoft/winget-pkgs`, users can install with `winget install --id yappologistic.Wineel --exact`.
 
 ## Windows limitations
 

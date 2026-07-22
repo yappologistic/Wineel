@@ -2,20 +2,21 @@ using System.Runtime.InteropServices;
 
 namespace Wineel;
 
-public enum KeyboardHookCommand { BeginAlt, Next, Previous, Commit, Cancel, AltReleased, Select0, Select1, Select2, Select3, Select4, Select5, Select6, Select7, Select8, Select9 }
+public enum KeyboardHookCommand { BeginAlt, Next, Previous, Commit, Cancel, AltReleased, Select0, Select1, Select2, Select3, Select4, Select5, Select6, Select7, Select8, Select9, SearchCharacter, SearchBackspace, DrillDown, TogglePin }
+public readonly record struct KeyboardHookInput(KeyboardHookCommand Command, char Character = '\0');
 
 public sealed class KeyboardHookService : IDisposable
 {
     private readonly Native.HookProc _callback;
     private readonly Func<bool> _canStart;
-    private readonly Action<KeyboardHookCommand> _post;
+    private readonly Action<KeyboardHookInput> _post;
     private nint _hook;
     private volatile bool _sessionActive;
     private volatile bool _commitOnAltRelease;
     private bool _leftAlt;
     private bool _rightAlt;
 
-    public KeyboardHookService(Func<bool> canStart, Action<KeyboardHookCommand> post)
+    public KeyboardHookService(Func<bool> canStart, Action<KeyboardHookInput> post)
     {
         _canStart = canStart;
         _post = post;
@@ -48,7 +49,7 @@ public sealed class KeyboardHookService : IDisposable
         if (key is Native.VkLMenu or Native.VkMenu) _leftAlt = keyDown;
         if (key == Native.VkRMenu) _rightAlt = keyDown;
 
-        if (keyUp && key is Native.VkLMenu or Native.VkRMenu or Native.VkMenu && !_leftAlt && !_rightAlt && _sessionActive && _commitOnAltRelease)
+        if (keyUp && (key is Native.VkLMenu or Native.VkRMenu or Native.VkMenu) && !_leftAlt && !_rightAlt && _sessionActive && _commitOnAltRelease)
         {
             Post(KeyboardHookCommand.AltReleased);
             return 1;
@@ -57,6 +58,7 @@ public sealed class KeyboardHookService : IDisposable
         if (!keyDown) return Native.CallNextHookEx(_hook, code, wParam, lParam);
         var altDown = _leftAlt || _rightAlt || (data.Flags & Native.LlkhfAltdown) != 0 || Native.IsKeyDown(Native.VkMenu);
         var shiftDown = Native.IsKeyDown(Native.VkShift) || Native.IsKeyDown(Native.VkLShift) || Native.IsKeyDown(Native.VkRShift);
+        var controlDown = Native.IsKeyDown(0x11) || Native.IsKeyDown(0xA2) || Native.IsKeyDown(0xA3);
 
         if (!_sessionActive && key == Native.VkTab && altDown && _canStart())
         {
@@ -73,15 +75,19 @@ public sealed class KeyboardHookService : IDisposable
             Native.VkRight or Native.VkDown => KeyboardHookCommand.Next,
             Native.VkReturn => KeyboardHookCommand.Commit,
             Native.VkEscape => KeyboardHookCommand.Cancel,
+            0x08 => KeyboardHookCommand.SearchBackspace,
+            0x20 => KeyboardHookCommand.DrillDown,
+            0x50 when controlDown => KeyboardHookCommand.TogglePin,
             >= 0x30 and <= 0x39 => (KeyboardHookCommand)((int)KeyboardHookCommand.Select0 + (key - 0x30)),
+            >= 0x41 and <= 0x5A when !controlDown => KeyboardHookCommand.SearchCharacter,
             _ => (KeyboardHookCommand)(-1),
         };
         if ((int)command < 0) return Native.CallNextHookEx(_hook, code, wParam, lParam);
-        Post(command);
+        Post(command, command == KeyboardHookCommand.SearchCharacter ? char.ToLowerInvariant((char)key) : '\0');
         return 1;
     }
 
-    private void Post(KeyboardHookCommand command) => _post(command);
+    private void Post(KeyboardHookCommand command, char character = '\0') => _post(new KeyboardHookInput(command, character));
 
     public void Dispose()
     {

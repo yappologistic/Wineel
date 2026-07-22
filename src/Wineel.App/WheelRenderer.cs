@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Automation.Peers;
 using Point = System.Windows.Point;
 using Rect = System.Windows.Rect;
 using Color = System.Windows.Media.Color;
@@ -25,21 +26,37 @@ public sealed class WheelRenderer : FrameworkElement
     private LogicalPoint _center;
     private double _openProgress;
     private bool _renderSubscribed;
+    private bool _sessionVisible;
+    private string _status = string.Empty;
 
     public event Action<int>? ItemClicked;
+    public event Action<int>? ItemSelected;
+    public event Action<int>? ItemContextRequested;
     public event Action? OutsideClicked;
 
     public WheelRenderer() => RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.HighQuality);
 
-    public void SetSession(IReadOnlyList<VisualSwitcherItem> items, int selectedIndex, LogicalPoint center, AppSettings settings)
+    public void SetSession(IReadOnlyList<VisualSwitcherItem> items, int selectedIndex, LogicalPoint center, AppSettings settings, string status = "")
     {
+        _sessionVisible = true;
         _items = items;
         _selectedIndex = selectedIndex;
         _previousSelectedIndex = -1;
         _center = center;
         _settings = settings;
+        _status = status;
         _openProgress = IsReducedMotion ? 1 : 0;
         BeginAnimation();
+        InvalidateVisual();
+    }
+
+    public void UpdateSession(IReadOnlyList<VisualSwitcherItem> items, int selectedIndex, string status)
+    {
+        _items = items;
+        _selectedIndex = selectedIndex;
+        _previousSelectedIndex = -1;
+        _status = status;
+        RaiseAutomationSelectionChanged();
         InvalidateVisual();
     }
 
@@ -48,12 +65,15 @@ public sealed class WheelRenderer : FrameworkElement
         if (selectedIndex == _selectedIndex) return;
         _previousSelectedIndex = _selectedIndex;
         _selectedIndex = selectedIndex;
+        RaiseAutomationSelectionChanged();
         BeginAnimation();
     }
 
     public void ClearSession()
     {
         _items = Array.Empty<VisualSwitcherItem>();
+        _sessionVisible = false;
+        _status = string.Empty;
         _hitRects.Clear();
         StopAnimation();
         InvalidateVisual();
@@ -62,7 +82,7 @@ public sealed class WheelRenderer : FrameworkElement
     protected override void OnRender(DrawingContext drawing)
     {
         base.OnRender(drawing);
-        if (_items.Count == 0) return;
+        if (!_sessionVisible) return;
         _hitRects.Clear();
         var wheel = _settings.WheelSize;
         var plateRadius = wheel / 2;
@@ -108,11 +128,14 @@ public sealed class WheelRenderer : FrameworkElement
                 DrawBadge(drawing, badge, iconRect.Right + 2, iconRect.Bottom - 10);
             if (visual.Item.WindowCount > 1)
                 DrawCount(drawing, visual.Item.WindowCount, iconRect.Left - 3, iconRect.Bottom - 9);
+            if (visual.IsPinned)
+                DrawPin(drawing, iconRect.Left + 2, iconRect.Top + 3);
             if (isSelected && _settings.ShowLabels) DrawLabel(drawing, visual.Item.DisplayName, slot.Center.X, iconRect.Bottom + 15);
         }
 
         if (_items.Count > _settings.MaximumVisibleIcons)
             DrawPosition(drawing, $"{_selectedIndex + 1} / {_items.Count}", center.X, center.Y + plateRadius - 29);
+        if (!string.IsNullOrWhiteSpace(_status)) DrawStatus(drawing, _status, center.X, center.Y + 17);
 
         drawing.Pop();
         drawing.Pop();
@@ -176,6 +199,22 @@ public sealed class WheelRenderer : FrameworkElement
         drawing.DrawText(formatted, new Point(rect.X + 5, rect.Y + 2));
     }
 
+    private static void DrawPin(DrawingContext drawing, double x, double y)
+    {
+        drawing.DrawEllipse(new SolidColorBrush(Color.FromArgb(235, 232, 184, 72)), new Pen(new SolidColorBrush(Color.FromArgb(180, 255, 245, 205)), 1), new Point(x, y), 8, 8);
+        var formatted = Text("P", 8, FontWeights.Bold, Color.FromRgb(26, 24, 18));
+        drawing.DrawText(formatted, new Point(x - formatted.Width / 2, y - formatted.Height / 2));
+    }
+
+    private static void DrawStatus(DrawingContext drawing, string status, double x, double y)
+    {
+        var display = status.Length > 46 ? string.Concat(status.AsSpan(0, 43), "…") : status;
+        var formatted = Text(display, 12, FontWeights.SemiBold, Color.FromArgb(220, 242, 242, 244));
+        var rect = new Rect(x - formatted.Width / 2 - 10, y, formatted.Width + 20, formatted.Height + 7);
+        drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(180, 18, 18, 20)), new Pen(new SolidColorBrush(Color.FromArgb(48, 255, 255, 255)), 1), rect, 9, 9);
+        drawing.DrawText(formatted, new Point(rect.X + 10, rect.Y + 3.5));
+    }
+
     private static void DrawLabel(DrawingContext drawing, string label, double x, double y)
     {
         var display = label.Length > 38 ? string.Concat(label.AsSpan(0, 35), "…") : label;
@@ -233,6 +272,40 @@ public sealed class WheelRenderer : FrameworkElement
         }
         OutsideClicked?.Invoke();
         e.Handled = true;
+    }
+
+    protected override void OnMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        var point = e.GetPosition(this);
+        foreach (var pair in _hitRects)
+        {
+            if (!pair.Value.Contains(point)) continue;
+            ItemContextRequested?.Invoke(pair.Key);
+            e.Handled = true;
+            return;
+        }
+        e.Handled = true;
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new WheelRendererAutomationPeer(this);
+
+    internal IReadOnlyList<VisualSwitcherItem> AutomationItems => _items;
+    internal int AutomationSelectedIndex => _selectedIndex;
+    internal string AutomationStatus => _status;
+    internal void AutomationInvoke(int index) => ItemClicked?.Invoke(index);
+    internal void AutomationSelect(int index) => ItemSelected?.Invoke(index);
+    internal Rect AutomationItemBounds(int index)
+    {
+        if (!_hitRects.TryGetValue(index, out var bounds) || !IsVisible) return Rect.Empty;
+        var topLeft = PointToScreen(bounds.TopLeft);
+        var bottomRight = PointToScreen(bounds.BottomRight);
+        return new Rect(topLeft, bottomRight);
+    }
+
+    private void RaiseAutomationSelectionChanged()
+    {
+        if (UIElementAutomationPeer.FromElement(this) is WheelRendererAutomationPeer peer)
+            peer.RaiseSelectionChanged();
     }
 
     private static Rect Inflate(Rect rect, double amount) => new(rect.X - amount, rect.Y - amount, rect.Width + amount * 2, rect.Height + amount * 2);

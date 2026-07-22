@@ -74,6 +74,11 @@ public sealed class SettingsStore
             if (Math.Abs(priorPlateOpacity - 0.72) < 0.001) root["PlateOpacity"] = 0.68;
             root["Version"] = AppSettings.CurrentVersion;
         }
+        if (version <= 4)
+        {
+            root["PinnedIdentities"] ??= new JsonArray();
+            root["Version"] = AppSettings.CurrentVersion;
+        }
         return root;
     }
 

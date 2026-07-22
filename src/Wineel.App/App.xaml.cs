@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media.Imaging;
 using System.IO;
+using Microsoft.Win32;
 
 namespace Wineel;
 
@@ -11,6 +12,7 @@ public partial class App : System.Windows.Application
     private SwitcherController? _controller;
     private SettingsWindow? _settingsWindow;
     private TrayService? _tray;
+    private string? _dataRoot;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -23,9 +25,9 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wineel");
-        RollingFileLogger.Instance.Configure(Path.Combine(dataRoot, "Logs"));
-        _settingsStore = new SettingsStore(Path.Combine(dataRoot, "settings.json"));
+        _dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wineel");
+        RollingFileLogger.Instance.Configure(Path.Combine(_dataRoot, "Logs"));
+        _settingsStore = new SettingsStore(Path.Combine(_dataRoot, "settings.json"));
         var settings = _settingsStore.Load();
         if (_settingsStore.LastRecoveryBackup is not null)
             RollingFileLogger.Instance.Warning("Corrupt settings were backed up and defaults restored.");
@@ -53,6 +55,7 @@ public partial class App : System.Windows.Application
         _tray.PauseRequested += _controller.TogglePause;
         _tray.ReplacementRequested += _controller.ToggleReplacement;
         _tray.StartupRequested += _controller.ToggleStartup;
+        _tray.ExportDiagnosticsRequested += ExportDiagnostics;
         _tray.ExitRequested += Shutdown;
 
         DispatcherUnhandledException += (_, args) =>
@@ -73,6 +76,31 @@ public partial class App : System.Windows.Application
         _settingsWindow.LoadSettings(_controller?.Settings ?? new AppSettings());
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    private void ExportDiagnostics()
+    {
+        if (_dataRoot is null || _controller is null) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export Wineel diagnostics",
+            FileName = $"Wineel-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+            DefaultExt = ".zip",
+            Filter = "ZIP archive (*.zip)|*.zip",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            DiagnosticsExporter.Export(dialog.FileName, _dataRoot, _controller.Settings);
+            _tray?.Notify("Diagnostics exported. Review the archive before sharing it.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            RollingFileLogger.Instance.Error("Unable to export diagnostics.", exception);
+            _tray?.Notify("Wineel could not export diagnostics.");
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

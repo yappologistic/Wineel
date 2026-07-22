@@ -13,7 +13,6 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <Version>0.0.1</Version>
     <Company>Wineel</Company>
     <Product>Wineel</Product>
     <Description>Fast radial application switcher for Windows</Description>

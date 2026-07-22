@@ -63,6 +63,25 @@ public sealed class SwitcherStateMachine
         };
     }
 
+    public bool ReplaceItems(IReadOnlyList<SwitcherItem> items, string? preferredIdentity = null)
+    {
+        if (!IsActive) return false;
+        var previousIdentity = SelectedIndex >= 0 && SelectedIndex < _items.Count ? _items[SelectedIndex].Identity : null;
+        _items = items.ToArray();
+        if (_items.Count == 0)
+        {
+            SelectedIndex = -1;
+            return true;
+        }
+
+        var identity = preferredIdentity ?? previousIdentity;
+        SelectedIndex = identity is null
+            ? 0
+            : _items.ToList().FindIndex(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
+        if (SelectedIndex < 0) SelectedIndex = 0;
+        return true;
+    }
+
     public SwitcherResult SelectVisible(int itemIndex, bool commit)
     {
         if (!IsActive || itemIndex < 0 || itemIndex >= _items.Count) return new(false, false, false, false, 0);
@@ -83,6 +102,7 @@ public sealed class SwitcherStateMachine
 
     private SwitcherResult Move(int direction, bool wrap)
     {
+        if (_items.Count == 0) return new(true, false, false, false, 0);
         var proposed = SelectedIndex + direction;
         if (wrap) proposed = RadialLayout.Mod(proposed, _items.Count);
         else proposed = Math.Clamp(proposed, 0, _items.Count - 1);
@@ -95,6 +115,8 @@ public sealed class SwitcherStateMachine
 
     private SwitcherResult Close(bool commit)
     {
+        if (commit && (SelectedIndex < 0 || SelectedIndex >= _items.Count))
+            return new(true, false, false, false, 0);
         var target = commit && SelectedIndex >= 0 ? _items[SelectedIndex].TargetWindow : OriginalForeground;
         IsActive = false;
         return new(true, false, true, commit, target);
