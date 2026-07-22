@@ -1,3 +1,5 @@
+![Wineel radial application switcher](assets/wineel-readme-hero.png)
+
 # Wineel
 
 Wineel is a fast, native radial application switcher for Windows 10 and 11. Hold `Alt`, press `Tab`, and scroll through open applications without moving the pointer. Wineel can also leave Windows Alt+Tab untouched and open from the latched `Ctrl+Alt+Space` shortcut.

@@ -35,6 +35,9 @@ design-qa.md
 # The final application artwork is a required build resource, not a screenshot.
 !assets/wineel-icon.png
 
+# Explicitly approved public README banner.
+!assets/wineel-readme-hero.png
+
 # Local credentials and signing material.
 .env
 .env.*
