@@ -4,9 +4,16 @@ namespace Wineel;
 
 public static class ForegroundApplicationInfo
 {
-    public static string? GetExecutablePath()
+    private static readonly HashSet<string> ShellSurfaceClasses = new(StringComparer.OrdinalIgnoreCase)
     {
-        var hwnd = Native.GetForegroundWindow();
+        "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "NotifyIconOverflowWindow",
+        "DV2ControlHost", "Windows.UI.Core.CoreWindow",
+    };
+
+    public static string? GetExecutablePath() => GetExecutablePath(Native.GetForegroundWindow());
+
+    public static string? GetExecutablePath(nint hwnd)
+    {
         if (hwnd == 0) return null;
         _ = Native.GetWindowThreadProcessId(hwnd, out var processId);
         var process = Native.OpenProcess(Native.ProcessQueryLimitedInformation, false, processId);
@@ -18,5 +25,13 @@ public static class ForegroundApplicationInfo
             return Native.QueryFullProcessImageName(process, 0, path, ref capacity) ? path.ToString() : null;
         }
         finally { _ = Native.CloseHandle(process); }
+    }
+
+    public static bool IsShellSurface(nint hwnd)
+    {
+        if (hwnd == 0) return false;
+        var className = new StringBuilder(256);
+        _ = Native.GetClassName(hwnd, className, className.Capacity);
+        return ShellSurfaceClasses.Contains(className.ToString());
     }
 }

@@ -26,8 +26,27 @@ public sealed class RadialMathTests
     {
         var slots = RadialLayout.Calculate(23, 19, 12, new LogicalPoint(0, 0), 10);
         Assert.Equal(12, slots.Count);
-        Assert.Contains(slots, slot => slot.ItemIndex == 19);
+        Assert.Equal(19, slots[0].ItemIndex);
+        Assert.Equal(-Math.PI / 2, slots[0].AngleRadians, 6);
         Assert.Equal(12, slots.Select(slot => slot.ItemIndex).Distinct().Count());
+    }
+
+    [Fact]
+    public void SelectionRemainsAtTwelveOClockForShortFilteredLists()
+    {
+        var slots = RadialLayout.Calculate(5, 3, 12, new LogicalPoint(0, 0), 10);
+        Assert.Equal(3, slots[0].ItemIndex);
+        Assert.Equal(-Math.PI / 2, slots[0].AngleRadians, 6);
+    }
+
+    [Theory]
+    [InlineData(400, 64, 12, 8)]
+    [InlineData(340, 92, 12, 4)]
+    [InlineData(650, 48, 12, 12)]
+    [InlineData(400, 64, 6, 6)]
+    public void WheelCapacityAvoidsCrowdedLayouts(double wheelSize, double iconSize, int maximum, int expected)
+    {
+        Assert.Equal(expected, WheelCapacity.Calculate(wheelSize, iconSize, maximum));
     }
 
     [Theory]

@@ -13,7 +13,10 @@ public static class RadialLayout
         if (selectedIndex < 0 || selectedIndex >= itemCount) throw new ArgumentOutOfRangeException(nameof(selectedIndex));
         maximumVisible = Math.Clamp(maximumVisible, 1, 12);
         var visibleCount = Math.Min(itemCount, maximumVisible);
-        var firstIndex = itemCount <= visibleCount ? 0 : Mod(selectedIndex - (visibleCount / 2), itemCount);
+        // Keep the active item at twelve o'clock. A stable selection anchor is much
+        // easier to track than moving the active item around the ring as filtering
+        // changes the number of visible items.
+        var firstIndex = selectedIndex;
         var result = new List<RadialSlot>(visibleCount);
 
         for (var slot = 0; slot < visibleCount; slot++)
@@ -31,6 +34,24 @@ public static class RadialLayout
     }
 
     public static int Mod(int value, int modulus) => ((value % modulus) + modulus) % modulus;
+}
+
+public static class WheelCapacity
+{
+    public static int Calculate(double wheelSize, double iconSize, int configuredMaximum)
+    {
+        configuredMaximum = Math.Clamp(configuredMaximum, 1, 12);
+        if (wheelSize <= 0 || iconSize <= 0) return configuredMaximum;
+
+        var plateRadius = wheelSize / 2;
+        var ringRadius = Math.Min(plateRadius - iconSize * 0.65, wheelSize * 0.405);
+        if (ringRadius <= 0) return 1;
+
+        // Reserve enough arc for the selection halo and both corner badges.
+        var circumference = Math.PI * 2 * ringRadius;
+        var collisionSafeCount = Math.Max(1, (int)Math.Floor(circumference / (iconSize * 1.8)));
+        return Math.Min(configuredMaximum, collisionSafeCount);
+    }
 }
 
 public static class MonitorPlacement

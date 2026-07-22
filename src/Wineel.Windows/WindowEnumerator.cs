@@ -143,14 +143,15 @@ public sealed class WindowEnumerator : IWindowSnapshotProvider
 
     private static string ResolveDisplayName(string path, string title)
     {
+        var filename = Path.GetFileNameWithoutExtension(path);
+        if (string.Equals(filename, "explorer", StringComparison.OrdinalIgnoreCase)) return "File Explorer";
         try
         {
             var version = FileVersionInfo.GetVersionInfo(path);
-            if (!string.IsNullOrWhiteSpace(version.ProductName)) return version.ProductName.Trim();
             if (!string.IsNullOrWhiteSpace(version.FileDescription)) return version.FileDescription.Trim();
+            if (!string.IsNullOrWhiteSpace(version.ProductName)) return version.ProductName.Trim();
         }
         catch (Exception exception) when (exception is FileNotFoundException or System.ComponentModel.Win32Exception or ArgumentException) { }
-        var filename = Path.GetFileNameWithoutExtension(path);
         return !string.IsNullOrWhiteSpace(filename) ? filename : (!string.IsNullOrWhiteSpace(title) ? title : "Application");
     }
 }

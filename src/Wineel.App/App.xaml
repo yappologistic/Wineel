@@ -3,23 +3,24 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
-    <Color x:Key="BackgroundColor">#0E1320</Color>
-    <Color x:Key="SurfaceColor">#171E2F</Color>
-    <Color x:Key="SurfaceRaisedColor">#202A40</Color>
-    <Color x:Key="AccentColor">#6DA7FF</Color>
-    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
-    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#141414" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#1D1D1D" />
+    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#292929" />
+    <SolidColorBrush x:Key="InputBrush" Color="#202020" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F4F4F4" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#B9B9B9" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#454545" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#343434" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#8AB4F8" />
     <Style TargetType="Window">
       <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI" />
-      <Setter Property="Foreground" Value="#F5F7FB" />
-      <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource BackgroundBrush}" />
     </Style>
     <Style TargetType="Button">
-      <Setter Property="Foreground" Value="#F7FAFF" />
-      <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
-      <Setter Property="BorderBrush" Value="#3B4968" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
       <Setter Property="Padding" Value="14,8" />
       <Setter Property="Margin" Value="0,4" />
       <Setter Property="Cursor" Value="Hand" />
@@ -30,9 +31,10 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#2A3652" /></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger>
               <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Opacity" Value="0.78" /></Trigger>
               <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.45" /></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="Chrome" Property="BorderThickness" Value="2"/></Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -44,21 +46,21 @@
     </Style>
     <Style TargetType="Slider"><Setter Property="Margin" Value="0,8,0,16" /></Style>
     <Style TargetType="ComboBox">
-      <Setter Property="Background" Value="#202A40" />
-      <Setter Property="Foreground" Value="#F5F7FB" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="Padding" Value="8,6" />
       <Setter Property="Margin" Value="0,5,0,12" />
     </Style>
     <Style TargetType="TextBox">
-      <Setter Property="Background" Value="#111827" />
-      <Setter Property="Foreground" Value="#F5F7FB" />
-      <Setter Property="BorderBrush" Value="#3B4968" />
+      <Setter Property="Background" Value="{DynamicResource InputBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
       <Setter Property="Padding" Value="9,7" />
       <Setter Property="Margin" Value="0,5,0,12" />
     </Style>
-    <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#F5F7FB" /></Style>
-    <Style TargetType="TabControl"><Setter Property="Background" Value="{StaticResource BackgroundBrush}"/><Setter Property="Foreground" Value="#F5F7FB"/></Style>
-    <Style TargetType="TabItem"><Setter Property="Foreground" Value="#E9EEF8"/><Setter Property="Background" Value="{StaticResource SurfaceBrush}"/><Setter Property="Padding" Value="14,7"/></Style>
-    <Style TargetType="ListBox"><Setter Property="Background" Value="#111827"/><Setter Property="Foreground" Value="#F5F7FB"/></Style>
+    <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" /></Style>
+    <Style TargetType="TabControl"><Setter Property="Background" Value="{DynamicResource BackgroundBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/></Style>
+    <Style TargetType="TabItem"><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Padding" Value="14,7"/></Style>
+    <Style TargetType="ListBox"><Setter Property="Background" Value="{DynamicResource InputBrush}"/><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/></Style>
   </Application.Resources>
 </Application>
