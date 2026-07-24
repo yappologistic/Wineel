@@ -32,7 +32,9 @@ public sealed class SwitcherController : IDisposable
     private string _searchQuery = string.Empty;
     private string _transientStatus = string.Empty;
     private int _refreshGeneration;
-    private bool _disposed;
+    private nint _pendingForegroundHandle;
+    private int _foregroundRefreshQueued;
+    private volatile bool _disposed;
 
     public SwitcherController(SettingsStore settingsStore, AppSettings settings, ImageSource fallbackIcon, OverlayWindow overlay)
     {
@@ -44,11 +46,7 @@ public sealed class SwitcherController : IDisposable
         _icons = new IconResolver(fallbackIcon);
         _keyboard = new KeyboardHookService(CanStartAltSession, input => _dispatcher.BeginInvoke(() => HandleKeyboard(input), DispatcherPriority.Input));
         _hotKey.Pressed += () => BeginSession(SwitcherMode.Latched);
-        _mru.ForegroundChanged += handle => _dispatcher.BeginInvoke(() =>
-        {
-            CaptureExclusionCandidate(handle);
-            RefreshCache();
-        }, DispatcherPriority.Background);
+        _mru.ForegroundChanged += QueueForegroundRefresh;
         _overlay.ItemClicked += OnItemClicked;
         _overlay.ItemSelected += OnItemSelected;
         _overlay.ItemContextRequested += OnItemContextRequested;
@@ -66,28 +64,61 @@ public sealed class SwitcherController : IDisposable
     {
         if (!_mru.Start()) Notification?.Invoke("Wineel could not start MRU tracking. Window order may be less accurate.");
         if (!_keyboard.Install()) Notification?.Invoke("Wineel could not install its keyboard hook. Native Alt+Tab remains unchanged.");
-        if (!_hotKey.Register(Settings.FallbackShortcut)) Notification?.Invoke($"The shortcut {Settings.FallbackShortcut} is already in use.");
+        RegisterInitialShortcut();
         ApplyStartup(Settings.StartWithWindows);
         RefreshCache();
+    }
+
+    private void RegisterInitialShortcut()
+    {
+        if (_hotKey.Register(Settings.FallbackShortcut)) return;
+        if (HotKeyService.TryParse(Settings.FallbackShortcut, out _, out _))
+        {
+            Notification?.Invoke($"The shortcut {Settings.FallbackShortcut} is already in use.");
+            return;
+        }
+
+        const string fallback = "Ctrl+Alt+Space";
+        var invalidShortcut = Settings.FallbackShortcut;
+        if (!_hotKey.Register(fallback))
+        {
+            Notification?.Invoke($"The saved shortcut {invalidShortcut} is invalid, and {fallback} is already in use.");
+            return;
+        }
+
+        Settings = Settings with { FallbackShortcut = fallback };
+        SaveSettings(Settings);
+        SettingsApplied?.Invoke(Settings);
+        Notification?.Invoke($"The invalid shortcut {invalidShortcut} was reset to {fallback}.");
     }
 
     public void UpdateSettings(AppSettings settings)
     {
         var previous = Settings;
-        Settings = settings;
+        var applied = settings;
+        if (!string.Equals(previous.FallbackShortcut, settings.FallbackShortcut, StringComparison.OrdinalIgnoreCase)
+            && !_hotKey.Register(settings.FallbackShortcut))
+        {
+            applied = settings with { FallbackShortcut = previous.FallbackShortcut };
+            Notification?.Invoke($"The shortcut {settings.FallbackShortcut} could not be registered. {previous.FallbackShortcut} remains active.");
+        }
+
+        Settings = applied;
+        SaveSettings(applied);
+        if (previous.StartWithWindows != applied.StartWithWindows) ApplyStartup(applied.StartWithWindows);
+        if (applied.IsPaused && _state.IsActive) Cancel();
+        if (RequiresCacheRefresh(previous, applied)) RefreshCache();
+        SettingsApplied?.Invoke(applied);
+    }
+
+    private void SaveSettings(AppSettings settings)
+    {
         try { _settingsStore.Save(settings); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             RollingFileLogger.Instance.Error("Unable to save settings.", exception);
             Notification?.Invoke("Wineel could not save settings. Check the Logs folder for details.");
         }
-        if (!string.Equals(previous.FallbackShortcut, settings.FallbackShortcut, StringComparison.OrdinalIgnoreCase)
-            && !_hotKey.Register(settings.FallbackShortcut))
-            Notification?.Invoke($"The shortcut {settings.FallbackShortcut} is already in use.");
-        if (previous.StartWithWindows != settings.StartWithWindows) ApplyStartup(settings.StartWithWindows);
-        if (settings.IsPaused && _state.IsActive) Cancel();
-        if (RequiresCacheRefresh(previous, settings)) RefreshCache();
-        SettingsApplied?.Invoke(settings);
     }
 
     private static bool RequiresCacheRefresh(AppSettings previous, AppSettings current) =>
@@ -193,7 +224,7 @@ public sealed class SwitcherController : IDisposable
 
     private void OnItemClicked(int index)
     {
-        if (!Settings.MouseClickSelection || !_state.IsActive) return;
+        if (!Settings.MouseClickSelection || !_state.IsActive || index < 0 || index >= _state.Items.Count) return;
         var result = _state.SelectVisible(index, false);
         if (result.SelectionChanged) _overlay.SetSelection(_state.SelectedIndex);
         if (_drillParent is null && _state.Items[index].WindowCount > 1) EnterDrillDownOrCommit();
@@ -251,8 +282,23 @@ public sealed class SwitcherController : IDisposable
     private void ActivateLater(nint target) => _dispatcher.BeginInvoke(() =>
     {
         if (!_activator.Activate(target)) RollingFileLogger.Instance.Warning($"Foreground activation failed for 0x{target:X}.");
-        RefreshCache();
+        QueueForegroundRefresh(target);
     }, DispatcherPriority.Input);
+
+    private void QueueForegroundRefresh(nint handle)
+    {
+        if (_disposed) return;
+        Interlocked.Exchange(ref _pendingForegroundHandle, handle);
+        if (Interlocked.Exchange(ref _foregroundRefreshQueued, 1) != 0) return;
+        _dispatcher.BeginInvoke(() =>
+        {
+            Interlocked.Exchange(ref _foregroundRefreshQueued, 0);
+            var latestHandle = Interlocked.Exchange(ref _pendingForegroundHandle, 0);
+            if (_disposed) return;
+            CaptureExclusionCandidate(latestHandle);
+            RefreshCache();
+        }, DispatcherPriority.Background);
+    }
 
     private void RefreshCache()
     {
@@ -266,6 +312,7 @@ public sealed class SwitcherController : IDisposable
             return;
         }
         if (generation != _refreshGeneration) return;
+        _mru.Mru.Prune(Native.IsWindow);
         _latestWindows = windows;
         var grouped = SwitcherViews.OrderPinned(
             ApplicationGrouper.Group(windows, _mru.Mru.Snapshot(), Settings.GroupingMode),

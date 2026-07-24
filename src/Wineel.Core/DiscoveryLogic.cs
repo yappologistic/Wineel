@@ -28,6 +28,25 @@ public sealed class MruList
             if (_nodes.Remove(window, out var node)) _order.Remove(node);
         }
     }
+
+    public void Prune(Func<nint, bool> keep)
+    {
+        ArgumentNullException.ThrowIfNull(keep);
+        lock (_gate)
+        {
+            var node = _order.First;
+            while (node is not null)
+            {
+                var next = node.Next;
+                if (!keep(node.Value))
+                {
+                    _order.Remove(node);
+                    _nodes.Remove(node.Value);
+                }
+                node = next;
+            }
+        }
+    }
 }
 
 public static class ApplicationGrouper

@@ -26,7 +26,12 @@ public sealed class SettingsStore
             root = Migrate(root);
             return root.Deserialize<AppSettings>(Options) ?? new AppSettings();
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is JsonException
+                                             or InvalidOperationException
+                                             or FormatException
+                                             or OverflowException
+                                             or IOException
+                                             or UnauthorizedAccessException)
         {
             var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
             LastRecoveryBackup = $"{Path}.corrupt-{timestamp}.json";

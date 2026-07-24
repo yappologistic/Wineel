@@ -32,6 +32,17 @@ public sealed class DiscoveryTests
     }
 
     [Fact]
+    public void MruPruneRemovesStaleWindowsWithoutChangingRemainingOrder()
+    {
+        var mru = new MruList();
+        mru.Observe(1); mru.Observe(2); mru.Observe(3); mru.Observe(4);
+
+        mru.Prune(window => window is 2 or 4);
+
+        Assert.Equal(new nint[] { 4, 2 }, mru.Snapshot());
+    }
+
+    [Fact]
     public void ApplicationGroupingCombinesIdentityAndPreservesMruTarget()
     {
         var windows = new[]

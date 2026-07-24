@@ -15,6 +15,15 @@ public sealed class WindowsLogicTests
     }
 
     [Theory]
+    [InlineData("Ctrl+Space+A")]
+    [InlineData("Ctrl+Alt")]
+    [InlineData("Ctrl+F12")]
+    public void HotKeyParserRejectsAmbiguousOrUnsupportedShortcuts(string text)
+    {
+        Assert.False(HotKeyService.TryParse(text, out _, out _));
+    }
+
+    [Theory]
     [InlineData(120, 1)]
     [InlineData(-120, -1)]
     public void NativeWheelSignMatchesCoreAccumulator(int delta, int expected)

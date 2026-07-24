@@ -6,14 +6,38 @@ public sealed class HotKeyService : IDisposable
 {
     private const int Id = 0x574E;
     private HwndSource? _source;
+    private uint _registeredModifiers;
+    private uint _registeredKey;
+    private bool _isRegistered;
     public event Action? Pressed;
 
     public bool Register(string shortcut)
     {
         EnsureWindow();
-        _ = Native.UnregisterHotKey(_source!.Handle, Id);
         if (!TryParse(shortcut, out var modifiers, out var key)) return false;
-        return Native.RegisterHotKey(_source.Handle, Id, modifiers | Native.ModNorepeat, key);
+        if (_isRegistered && modifiers == _registeredModifiers && key == _registeredKey) return true;
+
+        var previousModifiers = _registeredModifiers;
+        var previousKey = _registeredKey;
+        var hadPrevious = _isRegistered;
+        if (hadPrevious) _ = Native.UnregisterHotKey(_source!.Handle, Id);
+        _isRegistered = false;
+
+        if (Native.RegisterHotKey(_source!.Handle, Id, modifiers | Native.ModNorepeat, key))
+        {
+            _registeredModifiers = modifiers;
+            _registeredKey = key;
+            _isRegistered = true;
+            return true;
+        }
+
+        if (hadPrevious && Native.RegisterHotKey(_source.Handle, Id, previousModifiers | Native.ModNorepeat, previousKey))
+        {
+            _registeredModifiers = previousModifiers;
+            _registeredKey = previousKey;
+            _isRegistered = true;
+        }
+        return false;
     }
 
     private void EnsureWindow()
@@ -44,8 +68,16 @@ public sealed class HotKeyService : IDisposable
             if (part is "CTRL" or "CONTROL") modifiers |= Native.ModControl;
             else if (part == "ALT") modifiers |= Native.ModAlt;
             else if (part == "SHIFT") modifiers |= Native.ModShift;
-            else if (part == "SPACE") key = Native.VkSpace;
-            else if (part.Length == 1 && char.IsLetterOrDigit(part[0])) key = part[0];
+            else if (part == "SPACE")
+            {
+                if (key != 0) return false;
+                key = Native.VkSpace;
+            }
+            else if (part.Length == 1 && char.IsLetterOrDigit(part[0]))
+            {
+                if (key != 0) return false;
+                key = part[0];
+            }
             else return false;
         }
         return key != 0 && modifiers != 0;
@@ -53,8 +85,11 @@ public sealed class HotKeyService : IDisposable
 
     public void Dispose()
     {
-        if (_source is not null) _ = Native.UnregisterHotKey(_source.Handle, Id);
+        if (_source is not null && _isRegistered) _ = Native.UnregisterHotKey(_source.Handle, Id);
         _source?.Dispose();
         _source = null;
+        _isRegistered = false;
+        _registeredModifiers = 0;
+        _registeredKey = 0;
     }
 }
