@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using System.Diagnostics;
 using System.IO;
@@ -21,7 +23,21 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _publishTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _publishTimer.Tick += (_, _) => FlushPendingSettings();
+        Loaded += (_, _) => ConstrainToWorkingArea();
         Closed += (_, _) => Hide();
+    }
+
+    private void ConstrainToWorkingArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        var workArea = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var availableWidth = workArea.Width / dpi.DpiScaleX;
+        var availableHeight = workArea.Height / dpi.DpiScaleY;
+        MaxWidth = Math.Max(MinWidth, availableWidth);
+        MaxHeight = Math.Max(MinHeight, availableHeight);
+        Width = Math.Min(Width, MaxWidth);
+        Height = Math.Min(Height, MaxHeight);
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

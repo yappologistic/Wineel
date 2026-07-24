@@ -1,7 +1,7 @@
 <Window x:Class="Wineel.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Wineel Settings" Width="880" Height="700" MinWidth="760" MinHeight="600"
+        Title="Wineel Settings" Width="880" Height="700" MinWidth="680" MinHeight="480"
         WindowStartupLocation="CenterScreen" Icon="Assets/wineel-icon.png">
   <Grid Background="{DynamicResource BackgroundBrush}">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -26,7 +26,7 @@
           <CheckBox x:Name="ReplaceAltTab" Content="Replace Windows Alt+Tab" Checked="AnySettingChanged" Unchecked="AnySettingChanged" />
           <TextBlock Text="Wineel only suppresses Alt+Tab while a valid switcher session can start." Foreground="{DynamicResource TextSecondaryBrush}" Margin="25,-3,0,12" />
           <TextBlock Text="Fallback shortcut" FontWeight="SemiBold" />
-          <TextBox x:Name="FallbackShortcut" LostFocus="AnySettingChanged" />
+          <TextBox x:Name="FallbackShortcut" AutomationProperties.Name="Fallback shortcut" LostFocus="AnySettingChanged" />
           <StackPanel Orientation="Horizontal"><Button Content="Restore default shortcuts" Click="RestoreShortcuts_Click"/><Button x:Name="PauseButton" Content="Pause Wineel" Click="Pause_Click" Margin="10,4,0,4"/></StackPanel>
           <Separator Margin="0,16" Background="{DynamicResource BorderBrush}" />
           <CheckBox x:Name="StartWithWindows" Content="Start Wineel with Windows" Checked="AnySettingChanged" Unchecked="AnySettingChanged" />
@@ -77,18 +77,18 @@
         </StackPanel></ScrollViewer>
       </TabItem>
       <TabItem Header="Favorites">
-        <Grid Margin="22" MaxWidth="720" HorizontalAlignment="Left">
+        <Grid Margin="22" MaxWidth="720" HorizontalAlignment="Stretch">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel><TextBlock Text="Favorites" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Pinned applications stay at the front of the wheel. Press Ctrl+P or right-click an icon while Wineel is open to pin it." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,14" TextWrapping="Wrap"/></StackPanel>
-          <Grid Grid.Row="1"><ListBox x:Name="PinnedIdentities" MinWidth="650" SelectionChanged="FavoriteSelectionChanged"/><StackPanel x:Name="FavoritesEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="No favorites yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Open the wheel and press Ctrl+P on an app." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0"/></StackPanel></Grid>
+          <Grid Grid.Row="1"><ListBox x:Name="PinnedIdentities" SelectionChanged="FavoriteSelectionChanged"/><StackPanel x:Name="FavoritesEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="No favorites yet" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Open the wheel and press Ctrl+P on an app." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0"/></StackPanel></Grid>
           <Button x:Name="RemoveFavoriteButton" Grid.Row="2" Content="Remove selected favorite" Click="RemoveFavorite_Click" HorizontalAlignment="Left" Margin="0,10,0,0" IsEnabled="False"/>
         </Grid>
       </TabItem>
       <TabItem Header="Exclusions">
-        <Grid Margin="22" MaxWidth="720" HorizontalAlignment="Left">
+        <Grid Margin="22" MaxWidth="720" HorizontalAlignment="Stretch">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel><TextBlock Text="Exclusions" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Exclude the app that was active immediately before Settings opened." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,14"/></StackPanel>
-          <Grid Grid.Row="1"><ListBox x:Name="Exclusions" MinWidth="650" SelectionChanged="ExclusionSelectionChanged"/><StackPanel x:Name="ExclusionsEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="No excluded applications" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Focus an app, then reopen Settings to add it." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0"/></StackPanel></Grid>
+          <Grid Grid.Row="1"><ListBox x:Name="Exclusions" SelectionChanged="ExclusionSelectionChanged"/><StackPanel x:Name="ExclusionsEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"><TextBlock Text="No excluded applications" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Focus an app, then reopen Settings to add it." Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0"/></StackPanel></Grid>
           <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0"><Button x:Name="AddExclusionButton" Content="Exclude previous application" Click="AddCurrent_Click"/><Button x:Name="RemoveExclusionButton" Content="Remove selected" Click="RemoveExclusion_Click" Margin="10,4,0,4" IsEnabled="False"/></StackPanel>
         </Grid>
       </TabItem>
