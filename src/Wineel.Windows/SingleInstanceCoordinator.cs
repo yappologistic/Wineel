@@ -27,7 +27,7 @@ public sealed class SingleInstanceCoordinator : IDisposable
         {
             while (!_cancellation.IsCancellationRequested)
             {
-                if (_signal.WaitOne(500)) callback();
+                if (_signal.WaitOne(500) && !_cancellation.IsCancellationRequested) callback();
             }
         });
     }

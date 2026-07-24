@@ -6,6 +6,8 @@ namespace Wineel;
 public sealed class TrayService : IDisposable
 {
     private readonly Forms.NotifyIcon _icon;
+    private readonly Forms.ContextMenuStrip _menu;
+    private readonly DrawingIcon _drawingIcon;
     private readonly Forms.ToolStripMenuItem _pause;
     private readonly Forms.ToolStripMenuItem _replacement;
     private readonly Forms.ToolStripMenuItem _startup;
@@ -19,23 +21,25 @@ public sealed class TrayService : IDisposable
 
     public TrayService()
     {
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("Open Settings", null, (_, _) => OpenSettings?.Invoke());
-        menu.Items.Add("Try Wineel", null, (_, _) => TryRequested?.Invoke());
-        menu.Items.Add(new Forms.ToolStripSeparator());
+        _menu = new Forms.ContextMenuStrip();
+        _menu.Items.Add("Open Settings", null, (_, _) => OpenSettings?.Invoke());
+        _menu.Items.Add("Try Wineel", null, (_, _) => TryRequested?.Invoke());
+        _menu.Items.Add(new Forms.ToolStripSeparator());
         _pause = new Forms.ToolStripMenuItem("Pause", null, (_, _) => PauseRequested?.Invoke());
         _replacement = new Forms.ToolStripMenuItem("Replace Alt+Tab", null, (_, _) => ReplacementRequested?.Invoke());
         _startup = new Forms.ToolStripMenuItem("Start with Windows", null, (_, _) => StartupRequested?.Invoke());
-        menu.Items.Add(_pause); menu.Items.Add(_replacement); menu.Items.Add(_startup);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Export diagnostics…", null, (_, _) => ExportDiagnosticsRequested?.Invoke());
-        menu.Items.Add("About Wineel", null, (_, _) => Forms.MessageBox.Show($"Wineel {ApplicationInfo.Version}\nA fast radial application switcher for Windows.\n\nNo telemetry. No network communication.", "About Wineel", Forms.MessageBoxButtons.OK, Forms.MessageBoxIcon.Information));
-        menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke());
+        _menu.Items.Add(_pause); _menu.Items.Add(_replacement); _menu.Items.Add(_startup);
+        _menu.Items.Add(new Forms.ToolStripSeparator());
+        _menu.Items.Add("Export diagnostics…", null, (_, _) => ExportDiagnosticsRequested?.Invoke());
+        _menu.Items.Add("About Wineel", null, (_, _) => Forms.MessageBox.Show($"Wineel {ApplicationInfo.Version}\nA fast radial application switcher for Windows.\n\nNo telemetry. No network communication.", "About Wineel", Forms.MessageBoxButtons.OK, Forms.MessageBoxIcon.Information));
+        _menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke());
+        _drawingIcon = DrawingIcon.ExtractAssociatedIcon(Environment.ProcessPath ?? throw new InvalidOperationException("Process path is unavailable."))
+            ?? throw new InvalidOperationException("The Wineel application icon could not be loaded.");
         _icon = new Forms.NotifyIcon
         {
-            Icon = DrawingIcon.ExtractAssociatedIcon(Environment.ProcessPath ?? throw new InvalidOperationException("Process path is unavailable.")),
+            Icon = _drawingIcon,
             Text = "Wineel",
-            ContextMenuStrip = menu,
+            ContextMenuStrip = _menu,
             Visible = true,
         };
         _icon.DoubleClick += (_, _) => OpenSettings?.Invoke();
@@ -60,5 +64,7 @@ public sealed class TrayService : IDisposable
     {
         _icon.Visible = false;
         _icon.Dispose();
+        _menu.Dispose();
+        _drawingIcon.Dispose();
     }
 }

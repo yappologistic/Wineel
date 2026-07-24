@@ -24,7 +24,6 @@ public partial class SettingsWindow : Window
         _publishTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _publishTimer.Tick += (_, _) => FlushPendingSettings();
         Loaded += (_, _) => ConstrainToWorkingArea();
-        Closed += (_, _) => Hide();
     }
 
     private void ConstrainToWorkingArea()

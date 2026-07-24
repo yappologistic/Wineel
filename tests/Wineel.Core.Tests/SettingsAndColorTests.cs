@@ -52,6 +52,28 @@ public sealed class SettingsAndColorTests
         finally { directory.Delete(true); }
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("{\"Version\":\"not-a-number\"}")]
+    public void StructurallyInvalidSettingsAreBackedUpAndDefaultsRestored(string json)
+    {
+        var directory = Directory.CreateTempSubdirectory("wineel-invalid-settings-");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "settings.json");
+            File.WriteAllText(path, json);
+            var store = new SettingsStore(path);
+
+            var settings = store.Load();
+
+            Assert.Equal(new AppSettings(), settings);
+            Assert.NotNull(store.LastRecoveryBackup);
+            Assert.True(File.Exists(store.LastRecoveryBackup));
+            Assert.True(File.Exists(path));
+        }
+        finally { directory.Delete(true); }
+    }
+
     [Fact]
     public void VersionOneEnableAltTabMigrates()
     {
