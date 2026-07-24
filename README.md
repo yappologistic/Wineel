@@ -29,7 +29,7 @@ The portable build is self-contained; users do not need to install .NET.
 
 Portable:
 
-1. Download `Wineel-0.1.0-win-x64-portable.zip` or the `Wineel-0.1.0-win-x64-setup.exe` installer from the GitHub release.
+1. Download `Wineel-0.1.2-win-x64-portable.zip` or the `Wineel-0.1.2-win-x64-setup.exe` installer from the GitHub release.
 2. Extract the entire archive to a writable folder.
 3. Run `Wineel.exe`.
 
@@ -96,8 +96,8 @@ The solution targets `net10.0-windows10.0.19041.0` and x64. The test suite cover
 Outputs:
 
 - Self-contained application: `artifacts/publish/win-x64/Wineel.exe`
-- Portable archive: `artifacts/Wineel-0.1.0-win-x64-portable.zip`
-- Per-user installer: run `./scripts/build-installer.ps1` after publishing; output is `artifacts/installer/Wineel-0.1.0-win-x64-setup.exe`
+- Portable archive: `artifacts/Wineel-0.1.2-win-x64-portable.zip`
+- Per-user installer: run `./scripts/build-installer.ps1` after publishing; output is `artifacts/installer/Wineel-0.1.2-win-x64-setup.exe`
 - SHA-256 hashes: `./scripts/checksums.ps1`
 - WinGet singleton manifest: `./scripts/generate-winget.ps1`
 
