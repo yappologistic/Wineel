@@ -45,7 +45,7 @@ public sealed record RadialSlot(int ItemIndex, int ViewportIndex, double AngleRa
 
 public sealed record AppSettings
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
     public int Version { get; init; } = CurrentVersion;
     public bool ReplaceAltTab { get; init; }
     public string FallbackShortcut { get; init; } = "Ctrl+Alt+Space";
@@ -58,8 +58,8 @@ public sealed record AppSettings
     public double WheelSize { get; init; } = 400;
     public double IconSize { get; init; } = 64;
     public int MaximumVisibleIcons { get; init; } = 12;
-    public double PlateOpacity { get; init; } = 0.68;
-    public double BeamIntensity { get; init; } = 0.32;
+    public double PlateOpacity { get; init; } = 0.82;
+    public double BeamIntensity { get; init; } = 0.18;
     public double AnimationSpeed { get; init; } = 1.0;
     public bool ShowLabels { get; init; } = true;
     public bool ShowNumberBadges { get; init; } = true;

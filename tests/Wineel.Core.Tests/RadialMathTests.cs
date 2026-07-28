@@ -22,21 +22,24 @@ public sealed class RadialMathTests
     }
 
     [Fact]
-    public void LongViewportContainsSelectionAndTwelveItems()
+    public void LongViewportUsesStablePagesAndContainsSelection()
     {
         var slots = RadialLayout.Calculate(23, 19, 12, new LogicalPoint(0, 0), 10);
-        Assert.Equal(12, slots.Count);
-        Assert.Equal(19, slots[0].ItemIndex);
+        Assert.Equal(11, slots.Count);
+        Assert.Equal(12, slots[0].ItemIndex);
         Assert.Equal(-Math.PI / 2, slots[0].AngleRadians, 6);
-        Assert.Equal(12, slots.Select(slot => slot.ItemIndex).Distinct().Count());
+        Assert.Contains(slots, slot => slot.ItemIndex == 19);
+        Assert.Equal(11, slots.Select(slot => slot.ItemIndex).Distinct().Count());
     }
 
     [Fact]
-    public void SelectionRemainsAtTwelveOClockForShortFilteredLists()
+    public void ShortListsKeepApplicationPositionsStableAsSelectionChanges()
     {
-        var slots = RadialLayout.Calculate(5, 3, 12, new LogicalPoint(0, 0), 10);
-        Assert.Equal(3, slots[0].ItemIndex);
-        Assert.Equal(-Math.PI / 2, slots[0].AngleRadians, 6);
+        var first = RadialLayout.Calculate(5, 0, 12, new LogicalPoint(0, 0), 10);
+        var later = RadialLayout.Calculate(5, 3, 12, new LogicalPoint(0, 0), 10);
+        Assert.Equal(first.Select(slot => slot.ItemIndex), later.Select(slot => slot.ItemIndex));
+        Assert.Equal(0, later[0].ItemIndex);
+        Assert.Equal(3, later[3].ItemIndex);
     }
 
     [Theory]

@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wineel.Core.Tests", "tests\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wineel.Windows.Tests", "tests\Wineel.Windows.Tests\Wineel.Windows.Tests.csproj", "{135F51CB-764C-45A0-811A-9CD2A99F81B7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wineel.App.Tests", "tests\Wineel.App.Tests\Wineel.App.Tests.csproj", "{77A8C13C-24C5-4B9A-97A5-6C1A047C2B20}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -38,5 +40,9 @@ Global
 		{135F51CB-764C-45A0-811A-9CD2A99F81B7}.Debug|x64.Build.0 = Debug|x64
 		{135F51CB-764C-45A0-811A-9CD2A99F81B7}.Release|x64.ActiveCfg = Release|x64
 		{135F51CB-764C-45A0-811A-9CD2A99F81B7}.Release|x64.Build.0 = Release|x64
+		{77A8C13C-24C5-4B9A-97A5-6C1A047C2B20}.Debug|x64.ActiveCfg = Debug|x64
+		{77A8C13C-24C5-4B9A-97A5-6C1A047C2B20}.Debug|x64.Build.0 = Debug|x64
+		{77A8C13C-24C5-4B9A-97A5-6C1A047C2B20}.Release|x64.ActiveCfg = Release|x64
+		{77A8C13C-24C5-4B9A-97A5-6C1A047C2B20}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 EndGlobal

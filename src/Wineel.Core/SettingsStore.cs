@@ -84,6 +84,14 @@ public sealed class SettingsStore
             root["PinnedIdentities"] ??= new JsonArray();
             root["Version"] = AppSettings.CurrentVersion;
         }
+        if (version <= 5)
+        {
+            var priorPlateOpacity = ReadNumber(root, "PlateOpacity", "plateOpacity", 0.68);
+            var priorBeamIntensity = ReadNumber(root, "BeamIntensity", "beamIntensity", 0.32);
+            if (Math.Abs(priorPlateOpacity - 0.68) < 0.001) root["PlateOpacity"] = 0.82;
+            if (Math.Abs(priorBeamIntensity - 0.32) < 0.001) root["BeamIntensity"] = 0.18;
+            root["Version"] = AppSettings.CurrentVersion;
+        }
         return root;
     }
 
