@@ -11,7 +11,8 @@ public sealed class SettingsAndColorTests
         var settings = new AppSettings();
         Assert.Equal(WheelAnchorMode.MonitorCenter, settings.WheelAnchor);
         Assert.Equal(400, settings.WheelSize);
-        Assert.Equal(0.68, settings.PlateOpacity);
+        Assert.Equal(0.82, settings.PlateOpacity);
+        Assert.Equal(0.18, settings.BeamIntensity);
     }
 
     [Fact]
@@ -83,7 +84,7 @@ public sealed class SettingsAndColorTests
         Assert.True(migrated["ReplaceAltTab"]!.GetValue<bool>());
         Assert.Null(migrated["EnableAltTab"]);
         Assert.Equal(400, migrated["WheelSize"]!.GetValue<int>());
-        Assert.Equal(0.68, migrated["PlateOpacity"]!.GetValue<double>());
+        Assert.Equal(0.82, migrated["PlateOpacity"]!.GetValue<double>());
     }
 
     [Fact]
@@ -91,7 +92,7 @@ public sealed class SettingsAndColorTests
     {
         var defaults = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":3,\"WheelSize\":440,\"PlateOpacity\":0.72}")!.AsObject());
         Assert.Equal(400, defaults["WheelSize"]!.GetValue<int>());
-        Assert.Equal(0.68, defaults["PlateOpacity"]!.GetValue<double>());
+        Assert.Equal(0.82, defaults["PlateOpacity"]!.GetValue<double>());
 
         var customized = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":3,\"WheelSize\":470,\"PlateOpacity\":0.8}")!.AsObject());
         Assert.Equal(470, customized["WheelSize"]!.GetValue<int>());
@@ -104,6 +105,32 @@ public sealed class SettingsAndColorTests
         var migrated = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":4}")!.AsObject());
         Assert.Equal(AppSettings.CurrentVersion, migrated["Version"]!.GetValue<int>());
         Assert.Empty(migrated["PinnedIdentities"]!.AsArray());
+    }
+
+    [Fact]
+    public void VersionFiveModernizesDefaultWheelSeparationWithoutOverwritingCustomization()
+    {
+        var defaults = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":5,\"PlateOpacity\":0.68,\"BeamIntensity\":0.32}")!.AsObject());
+        Assert.Equal(AppSettings.CurrentVersion, defaults["Version"]!.GetValue<int>());
+        Assert.Equal(0.82, defaults["PlateOpacity"]!.GetValue<double>());
+        Assert.Equal(0.18, defaults["BeamIntensity"]!.GetValue<double>());
+
+        var customized = SettingsStore.Migrate(JsonNode.Parse("{\"Version\":5,\"PlateOpacity\":0.9,\"BeamIntensity\":0.4}")!.AsObject());
+        Assert.Equal(0.9, customized["PlateOpacity"]!.GetValue<double>());
+        Assert.Equal(0.4, customized["BeamIntensity"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public void SavingToDirectoryPathFailsWithoutDeletingDirectory()
+    {
+        var directory = Directory.CreateTempSubdirectory("wineel-save-failure-");
+        try
+        {
+            var store = new SettingsStore(directory.FullName);
+            Assert.ThrowsAny<IOException>(() => store.Save(new AppSettings()));
+            Assert.True(directory.Exists);
+        }
+        finally { directory.Delete(true); }
     }
 
     [Fact]

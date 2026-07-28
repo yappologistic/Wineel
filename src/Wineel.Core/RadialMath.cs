@@ -12,16 +12,16 @@ public static class RadialLayout
         if (itemCount <= 0) return Array.Empty<RadialSlot>();
         if (selectedIndex < 0 || selectedIndex >= itemCount) throw new ArgumentOutOfRangeException(nameof(selectedIndex));
         maximumVisible = Math.Clamp(maximumVisible, 1, 12);
-        var visibleCount = Math.Min(itemCount, maximumVisible);
-        // Keep the active item at twelve o'clock. A stable selection anchor is much
-        // easier to track than moving the active item around the ring as filtering
-        // changes the number of visible items.
-        var firstIndex = selectedIndex;
+        var pageCapacity = Math.Min(itemCount, maximumVisible);
+        // Keep app positions and their number shortcuts stable. Long lists advance
+        // in pages only when selection crosses the current page boundary.
+        var firstIndex = itemCount <= pageCapacity ? 0 : (selectedIndex / pageCapacity) * pageCapacity;
+        var visibleCount = Math.Min(pageCapacity, itemCount - firstIndex);
         var result = new List<RadialSlot>(visibleCount);
 
         for (var slot = 0; slot < visibleCount; slot++)
         {
-            var itemIndex = Mod(firstIndex + slot, itemCount);
+            var itemIndex = firstIndex + slot;
             var angle = (-Math.PI / 2) + ((Math.PI * 2 * slot) / visibleCount);
             result.Add(new RadialSlot(
                 itemIndex,

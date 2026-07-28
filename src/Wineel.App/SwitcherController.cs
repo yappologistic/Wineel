@@ -65,7 +65,7 @@ public sealed class SwitcherController : IDisposable
         if (!_mru.Start()) Notification?.Invoke("Wineel could not start MRU tracking. Window order may be less accurate.");
         if (!_keyboard.Install()) Notification?.Invoke("Wineel could not install its keyboard hook. Native Alt+Tab remains unchanged.");
         RegisterInitialShortcut();
-        ApplyStartup(Settings.StartWithWindows);
+        _ = TryApplyStartup(Settings.StartWithWindows);
         RefreshCache();
     }
 
@@ -87,37 +87,59 @@ public sealed class SwitcherController : IDisposable
         }
 
         Settings = Settings with { FallbackShortcut = fallback };
-        SaveSettings(Settings);
+        _ = SaveSettings(Settings);
         SettingsApplied?.Invoke(Settings);
         Notification?.Invoke($"The invalid shortcut {invalidShortcut} was reset to {fallback}.");
     }
 
-    public void UpdateSettings(AppSettings settings)
+    public SettingsApplyResult UpdateSettings(AppSettings settings)
     {
         var previous = Settings;
         var applied = settings;
-        if (!string.Equals(previous.FallbackShortcut, settings.FallbackShortcut, StringComparison.OrdinalIgnoreCase)
-            && !_hotKey.Register(settings.FallbackShortcut))
+        string? errorMessage = null;
+
+        if (!string.Equals(previous.FallbackShortcut, settings.FallbackShortcut, StringComparison.OrdinalIgnoreCase))
         {
-            applied = settings with { FallbackShortcut = previous.FallbackShortcut };
-            Notification?.Invoke($"The shortcut {settings.FallbackShortcut} could not be registered. {previous.FallbackShortcut} remains active.");
+            if (!HotKeyService.TryParse(settings.FallbackShortcut, out _, out _))
+            {
+                applied = applied with { FallbackShortcut = previous.FallbackShortcut };
+                errorMessage = $"The shortcut format is not supported. {previous.FallbackShortcut} remains active.";
+            }
+            else if (!_hotKey.Register(settings.FallbackShortcut))
+            {
+                applied = applied with { FallbackShortcut = previous.FallbackShortcut };
+                errorMessage = $"{settings.FallbackShortcut} is unavailable. {previous.FallbackShortcut} remains active.";
+            }
+        }
+
+        if (previous.StartWithWindows != applied.StartWithWindows && !TryApplyStartup(applied.StartWithWindows))
+        {
+            applied = applied with { StartWithWindows = previous.StartWithWindows };
+            errorMessage ??= "Start with Windows could not be updated. The previous setting remains active.";
         }
 
         Settings = applied;
-        SaveSettings(applied);
-        if (previous.StartWithWindows != applied.StartWithWindows) ApplyStartup(applied.StartWithWindows);
+        var saved = SaveSettings(applied);
+        if (!saved) errorMessage ??= "Wineel could not save changes. Check the Logs folder for details.";
         if (applied.IsPaused && _state.IsActive) Cancel();
         if (RequiresCacheRefresh(previous, applied)) RefreshCache();
         SettingsApplied?.Invoke(applied);
+        if (errorMessage is not null) Notification?.Invoke(errorMessage);
+        return errorMessage is null ? SettingsApplyResult.Success(applied) : SettingsApplyResult.Failure(applied, errorMessage);
     }
 
-    private void SaveSettings(AppSettings settings)
+    private bool SaveSettings(AppSettings settings)
     {
-        try { _settingsStore.Save(settings); }
+        try
+        {
+            _settingsStore.Save(settings);
+            return true;
+        }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             RollingFileLogger.Instance.Error("Unable to save settings.", exception);
             Notification?.Invoke("Wineel could not save settings. Check the Logs folder for details.");
+            return false;
         }
     }
 
@@ -419,13 +441,18 @@ public sealed class SwitcherController : IDisposable
         return "Type to search · Space: windows";
     }
 
-    private void ApplyStartup(bool enabled)
+    private bool TryApplyStartup(bool enabled)
     {
-        try { _startup.SetEnabled(enabled, Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location); }
+        try
+        {
+            _startup.SetEnabled(enabled, Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location);
+            return true;
+        }
         catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             RollingFileLogger.Instance.Error("Unable to update the per-user startup entry.", exception);
             Notification?.Invoke("Wineel could not update Start with Windows.");
+            return false;
         }
     }
 

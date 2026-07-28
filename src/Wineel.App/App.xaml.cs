@@ -35,7 +35,7 @@ public partial class App : System.Windows.Application
 
         var icon = new BitmapImage();
         icon.BeginInit();
-        icon.UriSource = new Uri("pack://application:,,,/Assets/wineel-icon.png", UriKind.Absolute);
+        icon.UriSource = new Uri("pack://application:,,,/Assets/wineel-icon-fluent.png", UriKind.Absolute);
         icon.CacheOption = BitmapCacheOption.OnLoad;
         icon.EndInit();
         icon.Freeze();

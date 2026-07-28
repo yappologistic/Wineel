@@ -1,10 +1,14 @@
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using System.Diagnostics;
-using System.IO;
+using Microsoft.Win32;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfRadioButton = System.Windows.Controls.RadioButton;
+using Win32OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace Wineel;
 
@@ -15,7 +19,8 @@ public partial class SettingsWindow : Window
     private string? _exclusionCandidatePath;
     private AppSettings _settings = new();
     private readonly DispatcherTimer _publishTimer;
-    public event Action<AppSettings>? SettingsChanged;
+
+    public event Func<AppSettings, SettingsApplyResult>? SettingsChanged;
     public event Action? TryRequested;
 
     public SettingsWindow()
@@ -87,8 +92,27 @@ public partial class SettingsWindow : Window
         PauseButton.Content = settings.IsPaused ? "Resume Wineel" : "Pause Wineel";
         ApplyTheme(settings.ThemeMode);
         UpdateValueLabels();
+        UpdateShortcutValidation(false);
         UpdateListState();
         _loading = false;
+    }
+
+    private void Navigation_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!IsInitialized || sender is not WpfRadioButton { Tag: string tag } || !int.TryParse(tag, out var index)) return;
+        var pages = new FrameworkElement[] { GeneralPage, AppearancePage, InputPage, FavoritesPage, ExclusionsPage };
+        for (var i = 0; i < pages.Length; i++) pages[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+        var titles = new[] { "General", "Appearance", "Input", "Favorites", "Exclusions" };
+        var subtitles = new[]
+        {
+            "Core behavior for how Wineel launches, shows, and works on your system.",
+            "Tune the wheel layout, separation, labels, theme, and motion.",
+            "Choose how keyboard and mouse input move through the wheel.",
+            "Keep your most-used applications at the front of the wheel.",
+            "Choose applications that Wineel should never show."
+        };
+        PageTitle.Text = titles[index];
+        PageSubtitle.Text = subtitles[index];
     }
 
     private void AnySettingChanged(object sender, RoutedEventArgs e)
@@ -97,12 +121,43 @@ public partial class SettingsWindow : Window
         UpdateValueLabels();
         if (sender is Slider)
         {
+            SetSaveState(SaveVisualState.Saving, "Saving changes…");
             _publishPending = true;
             _publishTimer.Stop();
             _publishTimer.Start();
             return;
         }
         Publish(ReadSettings());
+    }
+
+    private void FallbackShortcut_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loading || !IsInitialized) return;
+        UpdateShortcutValidation(false);
+        SetSaveState(SaveVisualState.Pending, "Shortcut not saved yet");
+    }
+
+    private void FallbackShortcut_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading || !IsInitialized) return;
+        if (!UpdateShortcutValidation(true))
+        {
+            SetSaveState(SaveVisualState.Error, "Fix the shortcut before saving");
+            return;
+        }
+        Publish(ReadSettings());
+    }
+
+    private bool UpdateShortcutValidation(bool announce)
+    {
+        var value = FallbackShortcut.Text.Trim();
+        var valid = HotKeyService.TryParse(value, out _, out _);
+        ShortcutValidationText.Text = valid
+            ? "Shortcut format is valid"
+            : "Use at least one modifier and one supported key, such as Ctrl+Alt+Space.";
+        ShortcutValidationText.Foreground = (WpfBrush)FindResource(valid ? "SuccessBrush" : "ErrorBrush");
+        if (announce) ShortcutValidationText.Focusable = true;
+        return valid;
     }
 
     private void FlushPendingSettings()
@@ -157,38 +212,120 @@ public partial class SettingsWindow : Window
         _publishTimer.Stop();
         _publishPending = false;
         _settings = settings;
-        PauseButton.Content = settings.IsPaused ? "Resume Wineel" : "Pause Wineel";
-        ApplyTheme(settings.ThemeMode);
+        SetSaveState(SaveVisualState.Saving, "Saving changes…");
+        var result = SettingsChanged?.Invoke(settings) ?? SettingsApplyResult.Success(settings);
+        _settings = result.AppliedSettings;
+        PauseButton.Content = _settings.IsPaused ? "Resume Wineel" : "Pause Wineel";
+        ApplyTheme(_settings.ThemeMode);
+        if (!string.Equals(FallbackShortcut.Text.Trim(), _settings.FallbackShortcut, StringComparison.OrdinalIgnoreCase))
+        {
+            _loading = true;
+            FallbackShortcut.Text = _settings.FallbackShortcut;
+            _loading = false;
+        }
+        UpdateShortcutValidation(false);
         UpdateListState();
-        SettingsChanged?.Invoke(settings);
+        SetSaveState(result.Saved ? SaveVisualState.Saved : SaveVisualState.Error,
+            result.Saved ? "All changes saved" : result.ErrorMessage ?? "Could not save changes");
+    }
+
+    private void SetSaveState(SaveVisualState state, string message)
+    {
+        if (!IsInitialized) return;
+        SaveStatusText.Text = message;
+        SaveStatusText.ToolTip = state == SaveVisualState.Error ? message : null;
+        var resource = state switch
+        {
+            SaveVisualState.Saved => "SuccessBrush",
+            SaveVisualState.Error => "ErrorBrush",
+            _ => "WarningBrush",
+        };
+        SaveStatusText.Foreground = (WpfBrush)FindResource(resource);
     }
 
     private void TryWineel_Click(object sender, RoutedEventArgs e) { FlushPendingSettings(); TryRequested?.Invoke(); }
     private void FinishSetup_Click(object sender, RoutedEventArgs e) { WelcomePanel.Visibility = Visibility.Collapsed; Publish(ReadSettings() with { OnboardingCompleted = true }); }
     private void Pause_Click(object sender, RoutedEventArgs e) => Publish(ReadSettings() with { IsPaused = !_settings.IsPaused });
     private void RestoreShortcuts_Click(object sender, RoutedEventArgs e) { FallbackShortcut.Text = "Ctrl+Alt+Space"; Publish(ReadSettings()); }
+
     private void ResetInput_Click(object sender, RoutedEventArgs e)
     {
-        ReverseWheel.IsChecked = false; RepeatTab.IsChecked = true; MouseClickSelection.IsChecked = true; WrapSelection.IsChecked = true; Publish(ReadSettings());
+        ReverseWheel.IsChecked = false;
+        RepeatTab.IsChecked = true;
+        MouseClickSelection.IsChecked = true;
+        WrapSelection.IsChecked = true;
+        Publish(ReadSettings());
     }
-    private void AddCurrent_Click(object sender, RoutedEventArgs e)
+
+    private void AddFavorite_Click(object sender, RoutedEventArgs e)
     {
-        var path = _exclusionCandidatePath;
-        if (string.IsNullOrWhiteSpace(path) || _settings.Exclusions.Contains(path, StringComparer.OrdinalIgnoreCase)) return;
-        Publish(ReadSettings() with { Exclusions = _settings.Exclusions.Append(path).ToArray() });
+        var path = PickExecutable("Add a favorite application");
+        if (path is not null) AddFavorite(path);
+    }
+
+    private void AddFavoriteCandidate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_exclusionCandidatePath is not null) AddFavorite(_exclusionCandidatePath);
+    }
+
+    private void AddFavorite(string path)
+    {
+        var change = SettingsCollection.AddUnique(_settings.PinnedIdentities, path);
+        if (!change.Changed)
+        {
+            SetSaveState(SaveVisualState.Error, $"{DescribeApplication(path)} is already a favorite");
+            return;
+        }
+        Publish(ReadSettings() with { PinnedIdentities = change.Items });
         LoadSettings(_settings);
     }
+
+    private void BrowseExclusion_Click(object sender, RoutedEventArgs e)
+    {
+        var path = PickExecutable("Exclude an application from Wineel");
+        if (path is not null) AddExclusion(path);
+    }
+
+    private void AddCurrent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_exclusionCandidatePath is not null) AddExclusion(_exclusionCandidatePath);
+    }
+
+    private void AddExclusion(string path)
+    {
+        var change = SettingsCollection.AddUnique(_settings.Exclusions, path);
+        if (!change.Changed)
+        {
+            SetSaveState(SaveVisualState.Error, $"{DescribeApplication(path)} is already excluded");
+            return;
+        }
+        Publish(ReadSettings() with { Exclusions = change.Items });
+        LoadSettings(_settings);
+    }
+
+    private static string? PickExecutable(string title)
+    {
+        var dialog = new Win32OpenFileDialog
+        {
+            Title = title,
+            Filter = "Applications (*.exe)|*.exe",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        return dialog.ShowDialog() == true ? Path.GetFullPath(dialog.FileName) : null;
+    }
+
     private void RemoveExclusion_Click(object sender, RoutedEventArgs e)
     {
         if (Exclusions.SelectedItem is not string selected) return;
-        Publish(ReadSettings() with { Exclusions = _settings.Exclusions.Where(item => !string.Equals(item, selected, StringComparison.OrdinalIgnoreCase)).ToArray() });
+        Publish(ReadSettings() with { Exclusions = SettingsCollection.Remove(_settings.Exclusions, selected).Items });
         LoadSettings(_settings);
     }
 
     private void RemoveFavorite_Click(object sender, RoutedEventArgs e)
     {
         if (PinnedIdentities.SelectedItem is not string selected) return;
-        Publish(ReadSettings() with { PinnedIdentities = _settings.PinnedIdentities.Where(item => !string.Equals(item, selected, StringComparison.OrdinalIgnoreCase)).ToArray() });
+        Publish(ReadSettings() with { PinnedIdentities = SettingsCollection.Remove(_settings.PinnedIdentities, selected).Items });
         LoadSettings(_settings);
     }
 
@@ -203,14 +340,18 @@ public partial class SettingsWindow : Window
         RemoveFavoriteButton.IsEnabled = PinnedIdentities.SelectedItem is not null;
         RemoveExclusionButton.IsEnabled = Exclusions.SelectedItem is not null;
 
-        var alreadyExcluded = !string.IsNullOrWhiteSpace(_exclusionCandidatePath)
-            && _settings.Exclusions.Contains(_exclusionCandidatePath, StringComparer.OrdinalIgnoreCase);
-        AddExclusionButton.IsEnabled = !string.IsNullOrWhiteSpace(_exclusionCandidatePath) && !alreadyExcluded;
-        AddExclusionButton.Content = _exclusionCandidatePath is null
-            ? "Focus an app, then reopen Settings"
-            : alreadyExcluded
-                ? $"{DescribeApplication(_exclusionCandidatePath)} is excluded"
-                : $"Exclude {DescribeApplication(_exclusionCandidatePath)}";
+        var candidateAvailable = !string.IsNullOrWhiteSpace(_exclusionCandidatePath);
+        var alreadyFavorite = candidateAvailable && _settings.PinnedIdentities.Contains(_exclusionCandidatePath!, StringComparer.OrdinalIgnoreCase);
+        AddFavoriteCandidateButton.IsEnabled = candidateAvailable && !alreadyFavorite;
+        AddFavoriteCandidateButton.Content = !candidateAvailable
+            ? "Reopen Settings after focusing an app"
+            : alreadyFavorite ? $"{DescribeApplication(_exclusionCandidatePath!)} is a favorite" : $"Add {DescribeApplication(_exclusionCandidatePath!)}";
+
+        var alreadyExcluded = candidateAvailable && _settings.Exclusions.Contains(_exclusionCandidatePath!, StringComparer.OrdinalIgnoreCase);
+        AddExclusionButton.IsEnabled = candidateAvailable && !alreadyExcluded;
+        AddExclusionButton.Content = !candidateAvailable
+            ? "Reopen Settings after focusing an app"
+            : alreadyExcluded ? $"{DescribeApplication(_exclusionCandidatePath!)} is excluded" : $"Exclude {DescribeApplication(_exclusionCandidatePath!)}";
     }
 
     private static string DescribeApplication(string path)
@@ -233,4 +374,6 @@ public partial class SettingsWindow : Window
         ThemeMode = dark ? System.Windows.ThemeMode.Dark : System.Windows.ThemeMode.Light;
 #pragma warning restore WPF0001
     }
+
+    private enum SaveVisualState { Pending, Saving, Saved, Error }
 }

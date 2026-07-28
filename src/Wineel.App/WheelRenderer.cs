@@ -89,6 +89,7 @@ public sealed class WheelRenderer : FrameworkElement
         var ringRadius = Math.Min(plateRadius - _settings.IconSize * 0.65, wheel * 0.405);
         var center = new Point(_center.X, _center.Y);
         var highContrast = SystemParameters.HighContrast;
+        var visualPolicy = WheelVisualPolicy.Resolve(_settings, highContrast, SystemParameters.ClientAreaAnimation);
         var darkTheme = highContrast
             ? WpfSystemColors.WindowColor.R + WpfSystemColors.WindowColor.G + WpfSystemColors.WindowColor.B < 384
             : ThemeService.IsDark(_settings.ThemeMode);
@@ -100,18 +101,14 @@ public sealed class WheelRenderer : FrameworkElement
         var visibleCapacity = WheelCapacity.Calculate(wheel, _settings.IconSize, _settings.MaximumVisibleIcons);
         var slots = RadialLayout.Calculate(_items.Count, _selectedIndex, visibleCapacity, _center, ringRadius);
         var selectedSlot = slots.FirstOrDefault(slot => slot.ItemIndex == _selectedIndex);
-        DrawBeam(drawing, center, selectedSlot, plateRadius);
-
         System.Windows.Media.Brush plateFill = highContrast
             ? new SolidColorBrush(WpfSystemColors.WindowColor)
-            : CreateNeutralAcrylicBrush(_settings.PlateOpacity, darkTheme);
+            : CreateNeutralAcrylicBrush(visualPolicy.PlateOpacity, darkTheme);
         plateFill.Freeze();
         if (!highContrast)
             drawing.DrawEllipse(new SolidColorBrush(Color.FromArgb(42, 0, 0, 0)), null, new Point(center.X, center.Y + 3), plateRadius + 5, plateRadius + 5);
         var rim = highContrast ? WpfSystemColors.WindowTextColor : darkTheme ? Color.FromArgb(118, 192, 195, 200) : Color.FromArgb(130, 96, 96, 100);
-        var innerRim = darkTheme ? Color.FromArgb(42, 255, 255, 255) : Color.FromArgb(48, 0, 0, 0);
         drawing.DrawEllipse(plateFill, new Pen(new SolidColorBrush(rim), 1.25), center, plateRadius, plateRadius);
-        drawing.DrawEllipse(null, new Pen(new SolidColorBrush(innerRim), 1), center, plateRadius - 12, plateRadius - 12);
         drawing.DrawEllipse(new SolidColorBrush(foreground), null, center, 5.25, 5.25);
 
         var animationProgress = IsReducedMotion ? 1 : EaseOut(Math.Min(1, _animation.Elapsed.TotalMilliseconds / SelectionDuration));
@@ -120,16 +117,15 @@ public sealed class WheelRenderer : FrameworkElement
             var visual = _items[slot.ItemIndex];
             var isSelected = slot.ItemIndex == _selectedIndex;
             var wasSelected = slot.ItemIndex == _previousSelectedIndex;
-            var selectedScale = isSelected ? Lerp(1, 1.24, animationProgress) : wasSelected ? Lerp(1.24, 1, animationProgress) : 1;
+            var selectedScale = isSelected ? Lerp(1, 1.12, animationProgress) : wasSelected ? Lerp(1.12, 1, animationProgress) : 1;
             var size = _settings.IconSize * selectedScale;
             var iconRect = new Rect(slot.Center.X - size / 2, slot.Center.Y - size / 2, size, size);
             if (isSelected)
             {
-                var halo = darkTheme ? Color.FromArgb(38, 255, 255, 255) : Color.FromArgb(34, 0, 0, 0);
-                var selection = darkTheme ? Color.FromArgb(150, 20, 20, 22) : Color.FromArgb(188, 255, 255, 255);
-                drawing.DrawRoundedRectangle(new SolidColorBrush(halo), null, Inflate(iconRect, 22), 22, 22);
-                drawing.DrawRoundedRectangle(new SolidColorBrush(selection), new Pen(new SolidColorBrush(foreground), 3), Inflate(iconRect, 10), 18, 18);
-                drawing.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(120, foreground.R, foreground.G, foreground.B)), 1.2), Inflate(iconRect, 4), 13, 13);
+                var accent = highContrast ? WpfSystemColors.HighlightColor : Color.FromRgb(241, 185, 74);
+                var glowAlpha = (byte)Math.Clamp(visualPolicy.SelectionGlow * 180, 0, 100);
+                drawing.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(glowAlpha, accent.R, accent.G, accent.B)), null, Inflate(iconRect, 14), 18, 18);
+                drawing.DrawRoundedRectangle(new SolidColorBrush(darkTheme ? Color.FromArgb(220, 24, 26, 29) : Color.FromArgb(235, 255, 255, 255)), new Pen(new SolidColorBrush(accent), 3), Inflate(iconRect, 8), 15, 15);
             }
             drawing.DrawImage(visual.Icon, iconRect);
             _hitRects[slot.ItemIndex] = Inflate(iconRect, 16);
@@ -139,66 +135,38 @@ public sealed class WheelRenderer : FrameworkElement
                 DrawCount(drawing, visual.Item.WindowCount, iconRect.Left - 3, iconRect.Bottom - 9);
             if (visual.IsPinned)
                 DrawPin(drawing, iconRect.Left + 2, iconRect.Top + 3);
-            if (isSelected && _settings.ShowLabels) DrawLabel(drawing, visual.Item.DisplayName, slot.Center.X, iconRect.Bottom + 15, darkTheme, foreground);
         }
 
-        if (_items.Count > visibleCapacity)
-            DrawPosition(drawing, $"{_selectedIndex + 1} / {_items.Count}", center.X, center.Y - 13, foreground);
-        if (!string.IsNullOrWhiteSpace(_status)) DrawStatus(drawing, _status, center.X, center.Y + 5, darkTheme, foreground);
+        if (_items.Count > 0 && _selectedIndex >= 0 && _selectedIndex < _items.Count)
+            DrawCenterInfo(drawing, _items[_selectedIndex].Item.DisplayName, $"{_selectedIndex + 1} of {_items.Count}", _status, center.X, center.Y, darkTheme, foreground, _settings.ShowLabels);
+        else if (!string.IsNullOrWhiteSpace(_status))
+            DrawStatus(drawing, _status, center.X, center.Y - 10, darkTheme, foreground);
 
         drawing.Pop();
         drawing.Pop();
     }
 
-    private void DrawBeam(DrawingContext drawing, Point center, RadialSlot? selectedSlot, double plateRadius)
+    private static SolidColorBrush CreateNeutralAcrylicBrush(double opacity, bool darkTheme)
     {
-        if (selectedSlot is null || _settings.BeamIntensity <= 0) return;
-        var accent = ToColor(_items[selectedSlot.ItemIndex].Accent);
-        var far = Math.Sqrt(ActualWidth * ActualWidth + ActualHeight * ActualHeight) + plateRadius;
-        for (var layer = 4; layer >= 0; layer--)
-        {
-            var halfAngle = (8 + layer * 3.5) * Math.PI / 180;
-            var alpha = (byte)Math.Clamp(_settings.BeamIntensity * 255 / (layer + 2.1), 0, 90);
-            var geometry = Wedge(center, selectedSlot.AngleRadians, halfAngle, far);
-            drawing.DrawGeometry(new SolidColorBrush(Color.FromArgb(alpha, accent.R, accent.G, accent.B)), null, geometry);
-        }
+        var baseColor = darkTheme ? Color.FromRgb(27, 30, 34) : Color.FromRgb(246, 246, 248);
+        return new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(opacity, 0.55, 0.98) * 255), baseColor.R, baseColor.G, baseColor.B));
     }
 
-    private static StreamGeometry Wedge(Point center, double angle, double halfAngle, double distance)
+    private static void DrawCenterInfo(DrawingContext drawing, string label, string position, string status, double x, double y, bool darkTheme, Color foreground, bool showLabel)
     {
-        var geometry = new StreamGeometry();
-        using var context = geometry.Open();
-        context.BeginFigure(center, true, true);
-        context.LineTo(new Point(center.X + Math.Cos(angle - halfAngle) * distance, center.Y + Math.Sin(angle - halfAngle) * distance), true, false);
-        context.LineTo(new Point(center.X + Math.Cos(angle + halfAngle) * distance, center.Y + Math.Sin(angle + halfAngle) * distance), true, false);
-        geometry.Freeze();
-        return geometry;
-    }
-
-    private static RadialGradientBrush CreateNeutralAcrylicBrush(double opacity, bool darkTheme)
-    {
-        var brush = new RadialGradientBrush
-        {
-            MappingMode = BrushMappingMode.RelativeToBoundingBox,
-            Center = new Point(0.34, 0.25),
-            GradientOrigin = new Point(0.24, 0.16),
-            RadiusX = 0.92,
-            RadiusY = 0.92,
-            Opacity = Math.Clamp(opacity, 0.35, 0.95),
-        };
-        if (darkTheme)
-        {
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(78, 79, 82), 0));
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(42, 43, 46), 0.48));
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(17, 18, 20), 1));
-        }
-        else
-        {
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(255, 255, 255), 0));
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(232, 232, 234), 0.52));
-            brush.GradientStops.Add(new GradientStop(Color.FromRgb(204, 204, 207), 1));
-        }
-        return brush;
+        var title = showLabel ? (label.Length > 28 ? string.Concat(label.AsSpan(0, 25), "…") : label) : "Wineel";
+        var titleText = Text(title, 16, FontWeights.SemiBold, foreground);
+        var positionText = Text(position, 12, FontWeights.Normal, Color.FromArgb(205, foreground.R, foreground.G, foreground.B));
+        var statusText = Text(status, 11, FontWeights.Normal, Color.FromArgb(190, foreground.R, foreground.G, foreground.B));
+        var width = Math.Max(titleText.Width, Math.Max(positionText.Width, statusText.Width)) + 30;
+        var height = titleText.Height + positionText.Height + statusText.Height + 20;
+        var rect = new Rect(x - width / 2, y - height / 2, width, height);
+        var fill = darkTheme ? Color.FromArgb(218, 18, 20, 23) : Color.FromArgb(235, 255, 255, 255);
+        var border = darkTheme ? Color.FromArgb(65, 255, 255, 255) : Color.FromArgb(60, 0, 0, 0);
+        drawing.DrawRoundedRectangle(new SolidColorBrush(fill), new Pen(new SolidColorBrush(border), 1), rect, 14, 14);
+        drawing.DrawText(titleText, new Point(x - titleText.Width / 2, rect.Top + 8));
+        drawing.DrawText(positionText, new Point(x - positionText.Width / 2, rect.Top + 8 + titleText.Height));
+        drawing.DrawText(statusText, new Point(x - statusText.Width / 2, rect.Top + 10 + titleText.Height + positionText.Height));
     }
 
     private static void DrawBadge(DrawingContext drawing, string text, double x, double y)
@@ -257,7 +225,7 @@ public sealed class WheelRenderer : FrameworkElement
             new Typeface(new FontFamily("Segoe UI Variable Text, Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal),
             size, new SolidColorBrush(color ?? Colors.White), 1.0);
 
-    private bool IsReducedMotion => _settings.MotionPreference == MotionPreference.Reduced || (_settings.MotionPreference == MotionPreference.FollowWindows && !SystemParameters.ClientAreaAnimation);
+    private bool IsReducedMotion => !WheelVisualPolicy.Resolve(_settings, SystemParameters.HighContrast, SystemParameters.ClientAreaAnimation).Animate;
     private double SelectionDuration => Math.Clamp(105 / Math.Max(0.25, _settings.AnimationSpeed), 40, 260);
 
     private void BeginAnimation()
